@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH -J PP_array
+#SBATCH -o SLURM_outs/array_outs/%x_%j.out
+#SBATCH -c 4
+#SBATCH -p short
+
+##########################################################################################################################
+# This job performs custom de-multiplexing and standard bioinformatics (trimming, alignment) on chunks of paired fastq's #
+##########################################################################################################################
+
+mkdir -p SLURM_outs/array_outs
+
+chunk_indices="$1"
+genome="$2"
+scripts_DIR="$3"
+TMP_DIR="$4"
+
+barcodes="${barcodes}/barcodes"
+demux_scr="${scripts_DIR}/bin/atrandi_demux.py"
+
+chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
+
+READ1="${TMP_DIR}/read1_chunk_${chunk}"
+READ2="${TMP_DIR}/read2_chunk_${chunk}"
+
+##########################################################################################################################
+# Demultiplexing- extract barcode from read2, add to headers, delete reads lacking a legitimate barcode
+##########################################################################################################################
+
+python $demux_scr $READ1 $READ2 $barcodes
+--R1_output "${TMP_DIR}/corr_read1_chunk_${chunk}" \
+--R2_output "${TMP_DIR}/corr_read2_chunk_${chunk}" \
+--gzip False
+
+#delete uncorrected fastqs
+rm $READ1 $READ2
+
+##########################################################################################################################
+# Trimming 
+##########################################################################################################################
+
+# Reset read1 and read2 to corrected version
+READ1="${TMP_DIR}/corr_read1_chunk_${chunk}"
+READ2="${TMP_DIR}/corr_read1_chunk_${chunk}"
+
+module load cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
+
+trim_galore --paired --cores 4 -o "${TMP_DIR}" --illumina --gzip "${READ1}" "${READ2}" 
+
+module unload cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
+
+# Delete untrimmed fastqs
+rm $READ1 $READ2
+
+##########################################################################################################################
+# Alignment 
+##########################################################################################################################
+
+# Reset read1 and read2 to trimmed version
+READ1="${TMP_DIR}/corr_read1_chunk_${chunk}_val_1.fq.gz"
+READ2="${TMP_DIR}/corr_read2_chunk_${chunk}_val_2.fq.gz"
+
+module load BWA
+
+# Output file name
+SAM_FILE="${TMP_DIR}/${chunk}.sam"
+
+echo "Aligning with BWA-MEM"
+bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${genome}" "${READ1}" "${READ2}"
+
+# Delete fastq's
+rm "${READ1}" "${READ2}"
