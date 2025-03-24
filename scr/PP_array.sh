@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J PP_array
-#SBATCH -o SLURM_outs/array_outs/%x_%j.out
+#SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 4
 #SBATCH -p short
 
@@ -41,7 +41,7 @@ rm $READ1 $READ2
 
 # Reset read1 and read2 to corrected version
 READ1="${TMP_DIR}/corr_read1_chunk_${chunk}"
-READ2="${TMP_DIR}/corr_read1_chunk_${chunk}"
+READ2="${TMP_DIR}/corr_read2_chunk_${chunk}"
 
 module load cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
 
