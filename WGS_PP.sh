@@ -127,11 +127,11 @@ echo "Single cell array job ID: ${sc_array_ID}"
 ######################################################################################################
 #### Submit joint calling job
 
-ls "${OUTPUT_DIR}/sc_output/*.bam" > bam_list.txt
+# ls "${OUTPUT_DIR}/sc_output/*.bam" > bam_list.txt
 
-joint_calling_job_id=$(sbatch --dependency=afterok:$--dependency=afterok:joint_calling_job_id)
+# joint_calling_job_id=$(sbatch --dependency=afterok:$--dependency=afterok:joint_calling_job_id)
 
-echo "Joint Calling Job ID: ${joint_calling_job_id}"
+# echo "Joint Calling Job ID: ${joint_calling_job_id}"
 
 ######################################################################################################
 #### Submit anndata job
