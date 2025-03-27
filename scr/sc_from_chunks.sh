@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J sc_chunks
-#SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
+#SBATCH -o SLURM_outs/%x_%A.out
 
 ##########################################################################################################################
 # This job extracts reads from single cells from each chunk, then compiles into single cell bams                         #
