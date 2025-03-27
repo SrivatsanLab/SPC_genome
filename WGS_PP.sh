@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=Preprocessing
-#SBATCH --output=SLURM_outs/%x_%j.out
-#SBATCH -c 2
-#SBATCH --time 3-00:00:00
+#sbatch --parsable --job-name=Preprocessing
+#sbatch --parsable --output=SLURM_outs/%x_%j.out
+#sbatch --parsable -c 2
+#sbatch --parsable --time 3-00:00:00
 
 mkdir -p SLURM_outs/
 
@@ -95,41 +95,45 @@ ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${OUTPUT_DIR}/chunk_indices.
 chunk_count=$(wc -l "${OUTPUT_DIR}/chunk_indices.txt")
 
 ######################################################################################################
-#### Submit Job array
+#### Submit First Job array
 
-PP_array_ID=$(sbatch --array=1:$chunk_count "${scripts_DIR}/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${scripts_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${scripts_DIR}/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${scripts_DIR}" "${TMP_DIR}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
-#### Submit Compilation Job
+#### Make Knee Plot and detect real cells
 
-comp_job_ID=$(sbatch --dependency=afterok:$PP_array_ID "${scripts_DIR}/scr/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${OUTPUT_DIR}" "${scripts_DIR}")
+knee_plot_array_ID=$()
 
-echo "Compilation job id: ${comp_job_ID}"
+######################################################################################################
+#### Submit single cell compilation arrays
 
+sc_from_chunks_array_ID=$(sbatch --parsable --array=1-$chunk_count --dependency=afterok:$knee_plot_array_ID "${scripts_DIR}/sc_from_chunks_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+
+echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
+
+######################################################################################################
+#### Submit single cell variant calling array
 cell_count=$(wc -l "${OUTPUT_DIR}/real_cells.txt")
+
+sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${scripts_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${OUTPUT_DIR}" "${REFERENCE_GENOME}")
+
+echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 
 ######################################################################################################
 #### Submit matched bulk variant calling job
 
-# bulk_v_job_ID=$(sbatch --dependency=afterok:$comp_job_ID )
+# bulk_v_job_ID=$(sbatch --parsable --dependency=afterok:$comp_job_ID )
 
 # echo "Bulk calling job array ID: ${bulk_v_job_ID}"
-
-######################################################################################################
-#### Submit single cell array
-
-sc_array_ID=$(sbatch --array=1:$cell_count --dependency=afterok:$comp_job_ID "${OUTPUT_DIR}/${OUTPUT_NAME}.bam" "${OUTPUT_DIR}/real_cells.txt" "${OUTPUT_DIR}" "${SCRIPTS_DIR}" "${REFERENCE_GENOME}")
-
-echo "Single cell array job ID: ${sc_array_ID}"
 
 ######################################################################################################
 #### Submit joint calling job
 
 # ls "${OUTPUT_DIR}/sc_output/*.bam" > bam_list.txt
 
-# joint_calling_job_id=$(sbatch --dependency=afterok:$--dependency=afterok:joint_calling_job_id)
+# joint_calling_job_id=$(sbatch --parsable --dependency=afterok:$--dependency=afterok:joint_calling_job_id)
 
 # echo "Joint Calling Job ID: ${joint_calling_job_id}"
 

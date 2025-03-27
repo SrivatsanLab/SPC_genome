@@ -15,8 +15,8 @@ SCRIPTS_DIR="$4"
 
 ls $TMP_dir/*.sam > "${OUTPUT_DIR}/sam_list.txt"
 
-SAM_FILE="${OUTPUT_NAME}.sam"
-BAM_FILE="${OUTPUT_NAME}.bam"
+SAM_FILE="${OUTPUT_DIR}/${OUTPUT_NAME}.sam"
+BAM_FILE="${OUTPUT_DIR}/${OUTPUT_NAME}.bam"
 
 module load SAMtools
 
@@ -29,6 +29,6 @@ samtools view -@ 4 -bS "${SAM_FILE}" | samtools sort -@ 4 -o "${BAM_FILE}" && sa
 
 echo "Creating knee plot and detecting real cells..."
 
-samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/readcounts.py" -o "${OUTPUT_DIR}/readcounts.csv"
+samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/bin/readcounts.py" -o "${OUTPUT_DIR}/readcounts.csv"
 
-cat "${OUTPUT_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/detect_cells.py" --plot "${OUTPUT_DIR}/kneeplot.png" > "${OUTPUT_DIR}/real_cells.txt"
+cat "${OUTPUT_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/bin/detect_cells.py" --plot "${OUTPUT_DIR}/kneeplot.png" > "${OUTPUT_DIR}/real_cells.txt"
