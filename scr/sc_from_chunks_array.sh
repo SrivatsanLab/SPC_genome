@@ -17,7 +17,7 @@ sam_file="${TMP_DIR}/${chunk}.sam"
 
 cell_count=$(wc -l "${barcode_file}")
 
-array_ID=$(sbatch --parsable --array:1-$barcode_file "${scripts_DIR}/scr/extract_sc_array.sh" "${sam_file}" "${barcode_file}")
+array_ID=$(sbatch --parsable --array:1-$cell_count "${scripts_DIR}/scr/extract_sc_array.sh" "${sam_file}" "${barcode_file}")
 
 # Wait for the subjobs to finish
 srun --dependency=afterok:$array_ID sleep 1
