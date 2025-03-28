@@ -3,6 +3,7 @@
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 2
 #SBATCH -p short
+#SBATCH --time 12:00:00
 
 ##########################################################################################################################
 # This job extracts reads from single cells from a bulked sam file                                                       #
