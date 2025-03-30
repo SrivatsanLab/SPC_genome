@@ -17,7 +17,7 @@ job_ids=""
 # Count barcodes
 cell_count=$(wc -l < "$barcode_file")
 
-max_jobs=50000
+max_jobs=50000 #single user limit on rhino
 
 # Function to check current job count
 check_job_limit() {
@@ -32,6 +32,7 @@ check_job_limit() {
         while [ "$job_count" -ge "$max_jobs" ]; do
             # Check job count again and wait if needed
             job_count=$(squeue -u $USER | grep -v "squeue" | wc -l)
+			job_count=$((job_count + cell_count))
             sleep 60  # Wait for 1 minute before checking again
         done
         echo "Space available. Continuing job submissions."
@@ -40,19 +41,19 @@ check_job_limit() {
 
 # Iterate over each chunk
 while IFS= read -r chunk; do
-    sam_file="${TMP_dir}/${chunk}.sam"
+    bam_file="${TMP_dir}/${chunk}.bam"
 
     echo "Submitting array job for chunk: $chunk with $cell_count barcodes"
 
     check_job_limit
 
     # Submit an array job for processing all barcodes in this chunk
-    array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scr/extract_sc_array.sh" "$sam_file" "$barcode_file")
+    array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scr/extract_sc_array.sh" "$bam_file" "$barcode_file")
 
     # Add the array job ID to the list of job IDs
     job_ids="$job_ids$array_ID,"
 
-    echo "Submitted job $array_ID for chunk $chunk"
+    echo "Submitted job $array_ID for chunk $chunk, Job ID: ${array_ID}"
 done < "$chunk_indices"
 
 # Remove the trailing comma
