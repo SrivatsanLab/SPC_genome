@@ -14,8 +14,8 @@ barcode_file="$2"
 # Get the barcode for the current array task
 barcode=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$barcode_file")
 
-dir_name=$(dirname "$input_SAM")
-base_name=$(basename "$input_SAM" .sam)
+dir_name=$(dirname "$input_BAM")
+base_name=$(basename "$input_BAM" .bam)
 
 output_bam="${dir_name}/${base_name}_${barcode}.bam"
 
