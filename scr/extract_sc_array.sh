@@ -19,6 +19,6 @@ base_name=$(basename "$input_SAM" .sam)
 
 output_bam="${dir_name}/${base_name}_${barcode}.bam"
 
-samtools view -h -b -d CB:${barcode} "${input_BAM}" > "${output_bam}"
+# samtools view -h -b -d CB:${barcode} "${input_BAM}" > "${output_bam}"
 
-# samtools view -h ${input_BAM} | grep -E "^@|CB:Z:${barcode}" | samtools view -b -o "${output_bam}"
+samtools view -h ${input_BAM} | grep -E "^@|CB:Z:${barcode}" | samtools view -b -o "${output_bam}"
