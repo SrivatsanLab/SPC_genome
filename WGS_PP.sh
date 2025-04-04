@@ -10,7 +10,7 @@ SCRIPTS_DIR="./SPC_genome/"
 OUTPUT_DIR="."
 N_CHUNKS=500
 TMP_DIR=$(mktemp -d)
-
+REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38/"
 
 mkdir -p "${OUTPUT_DIR}"
 
@@ -23,7 +23,7 @@ Required arguments:
   -o    <output_name>           Desired sample name (prefix for outputs)
   -1    <read1.fastq.gz>        Read 1 FASTQ file
   -2    <read2.fastq.gz>        Read 2 FASTQ file
-  -g    <reference_genome.fa>   Path to a **BWA INDEXED** reference genome fasta (for alignment)
+  -g    <reference_genome>   	Path to directory containing and genome fasta, fasta index, and BWA index folder
   -r    <READ_COUNT>			Number of reads (from sequencing run info)
   
 Optional arguments:
@@ -54,7 +54,7 @@ while getopts ":o:1:2:g:s:O:n:t:h" option; do
 done
 
 # Check that required arguments are provided
-if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$REFERENCE_GENOME" ] || [ -z "$READ_COUNT" ]; then
+if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_COUNT" ]; then
     echo "Missing required arguments." >&2
     show_help
     exit 1

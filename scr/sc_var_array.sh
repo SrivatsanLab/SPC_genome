@@ -6,7 +6,7 @@
 # This job performs preliminary single sample variant calling                         									 #
 ##########################################################################################################################
 
-module load SAMtools GATK
+module load SAMtools GATK picard
 
 TMP_dir="$1"
 barcode_file="$2"
@@ -16,7 +16,8 @@ mkdir -p "${SC_outputs}"
 
 # Get the barcode for the current array task
 barcode=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$barcode_file")
-output_bam="${SC_outputs}/${barcode}.bam"
+sc_bam="${SC_outputs}/${barcode}.bam"
+GATK_bam="${SC_outputs}/${barcode}_GATK.bam"
 output_vcf="${SC_outputs}/${barcode}.g.vcf.gz"
 
 # Merge chunks into single cell bam:
@@ -24,14 +25,26 @@ echo "Merging chunks for cell: ${barcode}"
 
 ls ${TMP_dir}/*${barcode}.bam > "${TMP_dir}/${barcode}_files.txt"
 
-samtools merge -o "${output_bam}" -b "${TMP_dir}/${barcode}_files.txt"
-samtools index "${output_bam}"
+samtools merge -o "${sc_bam}" -b "${TMP_dir}/${barcode}_files.txt"
+samtools index "${sc_bam}"
+
+# add readgroups to header for GATK
+echo "Variant Calling for cell: ${barcode}"
+java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
+      I="${output_bam}" \
+      O="${GATK_bam}" \
+      SM="${barcode}" \
+	  RGPL=illumina \
+	  RGLB=lib1 \
+	  RGPU=unit1
+
+samtools index "${GATK_bam}"
 
 # variant Calling with GATK
 echo "Variant Calling for cell: ${barcode}"
 
 gatk --java-options "-Xmx4g" HaplotypeCaller  \
    -R "${genome}" \
-   -I "${output_bam}" \
+   -I "${GATK_bam}" \
    -O "${output_vcf}" \
    -ERC GVCF
