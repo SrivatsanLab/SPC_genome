@@ -25,9 +25,9 @@ output_vcf="${SC_outputs}/${barcode}.g.vcf.gz"
 # Merge chunks into single cell bam:
 echo "Merging chunks for cell: ${barcode}"
 
-bam_list=$(ls ${TMP_dir}/*${barcode}.bam)
+ls ${TMP_dir}/*${barcode}.bam > "${TMP_dir}/${barcode}_files.txt"
 
-samtools merge -o "${output_bam}" -b "${bam_list}"
+samtools merge -o "${output_bam}" -b "${TMP_dir}/${barcode}_files.txt"
 samtools index "${output_bam}"
 
 # variant Calling with GATK
