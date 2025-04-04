@@ -1,15 +1,14 @@
 #!/bin/bash
-#sbatch --parsable --job-name=Preprocessing
-#sbatch --parsable --output=SLURM_outs/%x_%j.out
-#sbatch --parsable -c 2
-#sbatch --parsable --time 3-00:00:00
+#sbatch --job-name=Preprocessing
+#sbatch --output=SLURM_outs/%x_%j.out
+#sbatch -c 2
 
 mkdir -p SLURM_outs/
 
 # Set Defaults
 SCRIPTS_DIR="./SPC_genome/"
 OUTPUT_DIR="."
-N_JOBS=5000
+N_CHUNKS=500
 TMP_DIR=$(mktemp -d)
 
 
@@ -30,14 +29,14 @@ Required arguments:
 Optional arguments:
   -s    <scripts_DIR> 			path to the SPC_genome directory (default: ./SPC_genome)
   -O    <output_dir>            desired output directory (default: .)
-  -j	<N_JOBS>				Number of subjobs for SLURM arrays. Default: 5000
+  -n	<N_CHUNKS>				Number of subjobs for SLURM arrays. Default: 500
   -t    <TMP_DIR>				Temp directory for fastq chunks. Provide in order to override mktemp (e.g. when scratch space is limited)
   -h                            Show this help message and exit
 EOF
 }
 
 # Parse options using getopts
-while getopts ":o:1:2:g:s:O:j:t:h" option; do
+while getopts ":o:1:2:g:s:O:n:t:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
@@ -46,7 +45,7 @@ while getopts ":o:1:2:g:s:O:j:t:h" option; do
 	r) READ_COUNT=$OPTARG ;;
     s) scripts_DIR=$OPTARG ;;  # Optional argument with default "./SPC_scWGS"
 	O) OUTPUT_DIR=$OPTARG ;; # Optional argument with default "."
-	j) N_JOBS=$OPTARG ;; # Optional argument with default 5000
+	n) N_CHUNKS=$OPTARG ;; # Optional argument with default 5000
 	t) TMP_DIR=$OPTARG ;; # Optional argument, provide to override defualt `mktemp`
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
@@ -81,14 +80,15 @@ echo "Splitting fastq's into chunks for parallel processing, this might take a w
 total_lines=$(( READ_COUNT * 4 ))
 
 # Compute lines per chunk
-CHUNK_LINES=$(( total_lines / N_JOBS ))
+CHUNK_LINES=$(( total_lines / N_CHUNKS ))
 
 # Ensure CHUNK_LINES is a multiple of 4
 CHUNK_LINES=$(( CHUNK_LINES / 4 * 4 ))
 
 # Step 3: Split each FASTQ file into chunks based on respective chunk size
-zcat "$READ1" | split -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_"
-zcat "$READ2" | split -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_"
+zcat "$READ1" | split -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
+zcat "$READ2" | split -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
+wait
 
 ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${OUTPUT_DIR}/chunk_indices.txt"
 
@@ -107,9 +107,9 @@ echo "Preprocessing array job ID: ${PP_array_ID}"
 knee_plot_array_ID=$()
 
 ######################################################################################################
-#### Submit single cell compilation arrays
+#### Submit single cell extraction arrays
 
-sc_from_chunks_array_ID=$(sbatch --parsable --array=1-$chunk_count --dependency=afterok:$knee_plot_array_ID "${scripts_DIR}/sc_from_chunks_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$knee_plot_array_ID "${scripts_DIR}/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
 
 echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 
