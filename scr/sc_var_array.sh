@@ -29,7 +29,7 @@ samtools merge -o "${sc_bam}" -b "${TMP_dir}/${barcode}_files.txt"
 samtools index "${sc_bam}"
 
 # add readgroups to header for GATK
-echo "Variant Calling for cell: ${barcode}"
+echo "adding GATK required readgroups for cell: ${barcode}"
 java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
       I="${output_bam}" \
       O="${GATK_bam}" \
