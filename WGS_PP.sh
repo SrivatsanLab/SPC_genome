@@ -116,8 +116,9 @@ echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 ######################################################################################################
 #### Submit single cell variant calling array
 cell_count=$(wc -l "${OUTPUT_DIR}/real_cells.txt")
+mkdir -p "${OUTPUT_DIR}/sc_ouputs"
 
-sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${scripts_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${OUTPUT_DIR}" "${REFERENCE_GENOME}")
+sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${scripts_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${OUTPUT_DIR}/sc_ouputs")
 
 echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 

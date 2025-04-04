@@ -10,11 +10,8 @@ module load SAMtools GATK
 
 TMP_dir="$1"
 barcode_file="$2"
-output_dir="$3"
-genome="$4"
-
-SC_outputs="${OUTPUT_dir}/sc_outputs"
-
+genome="$3"
+SC_outputs="$4"
 mkdir -p "${SC_outputs}"
 
 # Get the barcode for the current array task
