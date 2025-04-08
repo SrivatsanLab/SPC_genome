@@ -26,12 +26,14 @@ echo "Merging chunks for cell: ${barcode}"
 ls ${TMP_dir}/*${barcode}.bam > "${TMP_dir}/${barcode}_files.txt"
 
 samtools merge -o "${sc_bam}" -b "${TMP_dir}/${barcode}_files.txt"
+samtools sort -o "${sc_bam%.bam}.sorted.bam}" "${sc_bam}"
+mv "${sc_bam%.bam}.sorted.bam}" "${sc_bam}"
 samtools index "${sc_bam}"
 
 # add readgroups to header for GATK
 echo "adding GATK required readgroups for cell: ${barcode}"
 java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
-      I="${output_bam}" \
+      I="${sc_bam}" \
       O="${GATK_bam}" \
       SM="${barcode}" \
 	  RGPL=illumina \
@@ -39,6 +41,8 @@ java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
 	  RGPU=unit1
 
 samtools index "${GATK_bam}"
+
+# rm "${sc_bam}" "${sc_bam}.bai"
 
 # variant Calling with GATK
 echo "Variant Calling for cell: ${barcode}"
