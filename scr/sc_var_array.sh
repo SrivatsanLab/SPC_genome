@@ -6,7 +6,7 @@
 # This job performs preliminary single sample variant calling                         									 #
 ##########################################################################################################################
 
-module load SAMtools GATK picard
+module load SAMtools picard
 
 TMP_dir="$1"
 barcode_file="$2"
@@ -41,6 +41,9 @@ java -jar $EBROOTPICARD/picard.jar AddOrReplaceReadGroups \
 	  RGPU=unit1
 
 samtools index "${GATK_bam}"
+
+module unload picard
+module load GATK
 
 # rm "${sc_bam}" "${sc_bam}.bai"
 
