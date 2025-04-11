@@ -11,15 +11,13 @@ intervals="$3"
 genome="$4"
 output="$5"
 
-mkdir -p "${database}"
-
-gatk GenomicsDBImport \
+gatk --java-options '-DGATK_STACKTRACE_ON_USER_EXCEPTION=true' GenomicsDBImport \
   --genomicsdb-workspace-path "${database}" \
   --intervals "${intervals}" \
   --sample-name-map "${map}" \
   --reader-threads 4 \
   --max-num-intervals-to-import-in-parallel 9 \
-  --batch-size 100 \
+  --batch-size 100 
   
 gatk GenotypeGVCFs \
   -R "${genome}" \
