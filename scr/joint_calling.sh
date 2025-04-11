@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH -J jc
-#sbatch --output=SLURM_outs/%x_%j.out
+#SBATCH --output=SLURM_outs/%x_%j.out
 #SBATCH -c 36
 
 module load GATK

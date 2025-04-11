@@ -130,11 +130,18 @@ echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 # echo "Bulk calling job array ID: ${bulk_v_job_ID}"
 
 ######################################################################################################
-#### Submit joint calling job
+#### joint calling
 
-# ls "${OUTPUT_DIR}/sc_output/*.bam" > bam_list.txt
+#### Prep for joint calling:
 
-# joint_calling_job_id=$(sbatch --parsable --dependency=afterok:$--dependency=afterok:joint_calling_job_id)
+for f in sc_outputs/*.g.vcf.gz; do
+  bc=$(basename "$f" .g.vcf.gz)
+  echo -e "${bc}\t${f}"
+done > "{OUTPUT_DIR}/barcodes.map"
+
+
+
+# joint_calling_array_id=$(sbatch --parsable --dependency=afterok:$sc_var_array_ID "${scripts_DIR}/joint_calling_array.sh")
 
 # echo "Joint Calling Job ID: ${joint_calling_job_id}"
 
