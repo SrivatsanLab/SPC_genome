@@ -55,3 +55,5 @@ gatk --java-options "-Xmx4g" HaplotypeCaller  \
    -I "${GATK_bam}" \
    -O "${output_vcf}" \
    -ERC GVCF
+   
+gatk IndexFeatureFile -F "${output_vcf}"
