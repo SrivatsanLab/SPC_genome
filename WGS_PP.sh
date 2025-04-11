@@ -135,9 +135,10 @@ echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 #### Prep for joint calling:
 
 for f in sc_outputs/*.g.vcf.gz; do
+  [[ -f "${f}.tbi" ]] || continue  # skip if no index file
   bc=$(basename "$f" .g.vcf.gz)
   echo -e "${bc}\t${f}"
-done > "{OUTPUT_DIR}/barcodes.map"
+done > "${OUTPUT_DIR}/barcodes.map"
 
 
 
