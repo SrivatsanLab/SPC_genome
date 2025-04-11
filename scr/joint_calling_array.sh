@@ -10,8 +10,6 @@ temp="$1"
 map="$2"
 intervals="$3"
 genome="$4"
-out_dir="$5"
-name="$6"
 
 # Prepare workspace
 mkdir -p "${temp}"
