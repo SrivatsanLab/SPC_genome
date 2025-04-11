@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J jc
 #SBATCH --output=SLURM_outs/array_outs/%x_%A_%a.out
-#SBATCH -c=4
+#SBATCH -c 4
 
 set -euo pipefail
 
