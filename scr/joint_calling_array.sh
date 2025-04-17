@@ -10,6 +10,7 @@ temp="$1"
 map="$2"
 intervals="$3"
 genome="$4"
+scripts_dir="$5"
 
 # Prepare workspace
 mkdir -p "${temp}"
@@ -17,12 +18,15 @@ mkdir -p "${temp}"
 # Convert BED-style interval to GATK format (1-based, inclusive)
 INTERVAL=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${intervals}" | awk '{print $1 ":" $2+1 "-" $3}')
 DB_PATH="${temp}/database_${SLURM_ARRAY_TASK_ID}"
+
 GATK_output="${temp}/${INTERVAL}.vcf.gz"
-VEP_output="${temp}/${INTERVAL}_anno.vcf.gz"
+
+norm_temp="${temp}/${INTERVAL}_norm_temp.bcf"
+
+final_output="${temp}/${INTERVAL}.bcf"
+anndata="${temp}/${INTERVAL}.h5ad"
 
 echo "Running for interval: ${INTERVAL}" 
-echo "GenomicsDB path: ${DB_PATH}"
-echo "VCF output: ${GATK_output}"
 
 # Load GATK and run GenomicsDBImport + GenotypeGVCFs
 module load GATK 
@@ -41,25 +45,14 @@ gatk GenotypeGVCFs \
 
 module unload GATK
 
-# Load VEP and annotate
-module load VEP
+# Run Mutyper
+bcftools norm -m - "${GATK_output}" -Ob -o "${norm_temp}" 
 
-vep \
-  -i "${GATK_output}" \
-  -o "${VEP_output}" \
-  --vcf \
-  --compress_output bgzip \
-  --cache \
-  --offline \
-  --dir_cache ~/.vep \
-  --assembly GRCh38 \
-  --species homo_sapiens \
-  --everything \
-  --fork "${SLURM_CPUS_PER_TASK}" \
-  --verbose
+mutyper variants "${genome}" "${norm_temp}" | bcftools view --threads 8 -Ob -o "${final_output}"
 
-# Overwrite unannotated VCF with annotated version
-mv "${VEP_output}" "${GATK_output}"
+# Make Anndata Object
+python "${scripts_dir}/make_variant_anndata.py" "${final_output}" "${anndata}"
 
-# Index the annotated VCF
-tabix -p vcf "${GATK_output}"
+# cleanup
+rm "${norm_temp}"
+rm "${GATK_output}"
