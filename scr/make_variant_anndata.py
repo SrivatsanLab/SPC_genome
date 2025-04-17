@@ -15,12 +15,18 @@ import sys
 vcf_file = sys.argv[1]
 output_name = sys.argv[2]
 
+vcf_file = "vcf_chunks/chr10:100000001-105000000.vcf.gz"
+vcf = VCF(vcf_file)
+
+cells = np.array(vcf.samples)
+variants = [f"{variant.CHROM}-{variant.start}-{variant.REF}>{variant.ALT[0]}" for variant in vcf]
+variants = np.array(variants)
+
 depth = np.zeros((variants.shape[0],cells.shape[0]))
 alt = np.zeros((variants.shape[0],cells.shape[0]))
 binary = np.zeros((variants.shape[0],cells.shape[0]))
 
-vcf_file = "vcf_chunks/chr10:100000001-105000000.vcf.gz"
-vcf = VCF(vcf_file)
+
 with tqdm(total=len(variants),desc="Processing Variants", unit="var") as pbar:
     for count,variant in enumerate(vcf):
         # print(variant)
