@@ -15,7 +15,6 @@ import sys
 vcf_file = sys.argv[1]
 output_name = sys.argv[2]
 
-vcf_file = "vcf_chunks/chr10:100000001-105000000.vcf.gz"
 vcf = VCF(vcf_file)
 
 cells = np.array(vcf.samples)
@@ -53,5 +52,8 @@ binary = csr_matrix(binary.T, dtype=np.float32)
 adata = ad.AnnData(binary)
 adata.obs_names = cells
 adata.var_names = variants
+
+adata.layers['DP']=csr_matrix(depth.T, dtype=np.float32)
+adata.layers['AD']=csr_matrix(alt.T, dtype=np.float32)
 
 adata.write_h5ad(output_name)
