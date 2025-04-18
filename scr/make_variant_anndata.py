@@ -17,17 +17,24 @@ output_name = sys.argv[2]
 
 vcf = VCF(vcf_file)
 
-cells = np.array(vcf.samples)
-variants = [f"{variant.CHROM}-{variant.start}-{variant.REF}>{variant.ALT[0]}" for variant in vcf]
+# First: load all variants into a list
+variants_list = list(vcf)
+
+# Extract variant names from that
+variants = [f"{v.CHROM}-{v.start}-{v.REF}>{v.ALT[0]}" for v in variants_list]
 variants = np.array(variants)
+
+cells = np.array(vcf.samples)
 
 depth = np.zeros((variants.shape[0],cells.shape[0]))
 alt = np.zeros((variants.shape[0],cells.shape[0]))
 binary = np.zeros((variants.shape[0],cells.shape[0]))
 
+print('setup complete, counting reads now:')
+print(f"there are {len(cells)} cells and {len(variants)} variants")
 
 with tqdm(total=len(variants),desc="Processing Variants", unit="var") as pbar:
-    for count,variant in enumerate(vcf):
+    for count,variant in enumerate(variants_list):
         # print(variant)
         alt_dp = variant.gt_alt_depths
         ref_dp = variant.gt_ref_depths
@@ -42,11 +49,6 @@ with tqdm(total=len(variants),desc="Processing Variants", unit="var") as pbar:
         binary[count,mask] = 1
         
         pbar.update(1)
-
-vcf = VCF(vcf_file)
-cells = np.array(vcf.samples)
-variants = [f"{variant.CHROM}-{variant.start}-{variant.REF}>{variant.ALT[0]}" for variant in vcf]
-variants = np.array(variants)
 
 binary = csr_matrix(binary.T, dtype=np.float32)
 adata = ad.AnnData(binary)
