@@ -1,4 +1,4 @@
-Installation:
+### Installation:
 
 for now, simply clone the repo, and ensure scripts are executable:
 
@@ -6,7 +6,9 @@ for now, simply clone the repo, and ensure scripts are executable:
 	
 	chmod -R u+x  SPC_genome
 
-The main script for preprocessing SPC WGS data will split your input fastq's into a desired number of chunks, and process them in parallel using SLURM job arrays: 
+### Processing CapWGS data
+
+The main script for preprocessing CapWGS data will split your input fastq's into a desired number of chunks, and process them in parallel using SLURM job arrays: 
 
 	SPC_genome/WGS_PP.sh -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome.fa> -r <read_count>
 
@@ -25,3 +27,17 @@ The main script for preprocessing SPC WGS data will split your input fastq's int
 	  -h                            Show this help message and exit
 	  
 The subdirectory `SPC_genome/scr` contains scripts used for each sub job, and other useful utilities.
+
+### Other preprocessing scripts
+
+`amplicon_analysis/` : contains scripts for preprocessing and variant calling of SPC amplicon sequencing data
+
+`bin` : contains miscellaneous scripts for examining CapWGS data
+
+### Analysis notebooks
+
+notebooks in `species_mixing/` : Analysis of the species mixing CapWGS dataset
+
+`bulk_spectra_analysis.ipynb` : Analysis of the bulk WGS PolE-P286R K562 data
+
+`sc_analysis.ipynb` : Analysis of the processed PolE-P286R K562 CapWGS data
