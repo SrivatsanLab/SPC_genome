@@ -41,3 +41,7 @@ notebooks in `species_mixing/` : Analysis of the species mixing CapWGS dataset
 `bulk_spectra_analysis.ipynb` : Analysis of the bulk WGS PolE-P286R K562 data
 
 `sc_analysis.ipynb` : Analysis of the processed PolE-P286R K562 CapWGS data
+
+### `results/`:
+
+This folder contains processed outputs generated in the analysis notebooks
