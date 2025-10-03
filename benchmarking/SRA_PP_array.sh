@@ -54,7 +54,7 @@ SAM_FILE="${TMP_DIR}/${name}.sam"
 BAM_FILE="${OUT_DIR}/${name}.bam"
 
 echo "Aligning with BWA-MEM"
-bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${genome}" "${READ1}" "${READ2}"
+bwa mem -t 4 -c 1 -o "${SAM_FILE}" "${genome}" "${READ1}" "${READ2}"
 
 samtools view "${SAM_FILE}" -b -@ 4 | samtools sort -@ 4 -o "${BAM_FILE}" && samtools index -@ 4 "${BAM_FILE}"
 
