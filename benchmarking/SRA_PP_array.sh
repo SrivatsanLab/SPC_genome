@@ -17,10 +17,14 @@ name=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$SRRs")
 # fastq dump 
 ##########################################################################################################################
 
+module load SRA-Toolkit
+
 fasterq-dump "${path}/${name}" -O "${TMP_DIR}" -t "${TMP_DIR}" -m 16G
 
 READ1="${TMP_DIR}/${name}_1.fastq"
 READ2="${TMP_DIR}/${name}_2.fastq"
+
+module unload SRA-Toolkit
 
 ##########################################################################################################################
 # Trimming 
