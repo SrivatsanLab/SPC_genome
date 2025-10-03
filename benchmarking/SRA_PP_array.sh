@@ -2,7 +2,6 @@
 #SBATCH -J PP_array
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 4
-#SBATCH -p short
 
 mkdir -p SLURM_outs/array_outs
 
