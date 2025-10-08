@@ -4,11 +4,15 @@
 # Data paths
 data:
   # Main data directory (relative to project root)
-  base_dir: "../sc_PolE_novaseq"
+  base_dir: "./data"
 
-  # Input sequencing files
-  read1: ""  # Path to read1.fastq.gz
-  read2: ""  # Path to read2.fastq.gz
+  # Raw input sequencing files (symlinked)
+  read1: "./data/raw/k562_tree_1_S1_R1_001.fastq.gz"
+  read2: "./data/raw/k562_tree_1_S1_R2_001.fastq.gz"
+
+  # Read count (from sequencing run)
+  # Estimate: ~9 billion reads (adjust based on actual sequencing report)
+  read_count: 9000000000
 
 # Reference genome
 reference:
@@ -20,9 +24,9 @@ processing:
   # Number of chunks for parallel processing
   n_chunks: 500
 
-  # Temporary directory (leave empty to use system default)
-  # Set this if you need to override the default mktemp location
-  tmp_dir: ""
+  # Temporary directory for FASTQ chunks and intermediate files
+  # Default: /hpc/temp/srivatsan_s/SPC_genome_preprocessing
+  tmp_dir: "/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
 
 # Output settings
 output:

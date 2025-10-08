@@ -9,7 +9,7 @@ mkdir -p SLURM_outs/
 SCRIPTS_DIR="./SPC_genome/"
 OUTPUT_DIR="."
 N_CHUNKS=500
-TMP_DIR=$(mktemp -d)
+TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
 REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38/"
 
 mkdir -p "${OUTPUT_DIR}"
@@ -30,22 +30,22 @@ Optional arguments:
   -s    <scripts_DIR> 			path to the SPC_genome directory (default: ./SPC_genome)
   -O    <output_dir>            desired output directory (default: .)
   -n	<N_CHUNKS>				Number of subjobs for SLURM arrays. Default: 500
-  -t    <TMP_DIR>				Temp directory for fastq chunks. Provide in order to override mktemp (e.g. when scratch space is limited)
+  -t    <TMP_DIR>				Temp directory for fastq chunks (default: /hpc/temp/srivatsan_s/SPC_genome_preprocessing)
   -h                            Show this help message and exit
 EOF
 }
 
 # Parse options using getopts
-while getopts ":o:1:2:g:s:O:n:t:h" option; do
+while getopts ":o:1:2:g:r:s:O:n:t:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
     2) READ2=$OPTARG ;;
     g) REFERENCE_GENOME=$OPTARG ;;
 	r) READ_COUNT=$OPTARG ;;
-    s) scripts_DIR=$OPTARG ;;  # Optional argument with default "./SPC_scWGS"
+    s) SCRIPTS_DIR=$OPTARG ;;  # Optional argument with default "./SPC_genome"
 	O) OUTPUT_DIR=$OPTARG ;; # Optional argument with default "."
-	n) N_CHUNKS=$OPTARG ;; # Optional argument with default 5000
+	n) N_CHUNKS=$OPTARG ;; # Optional argument with default 500
 	t) TMP_DIR=$OPTARG ;; # Optional argument, provide to override defualt `mktemp`
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
@@ -92,12 +92,12 @@ wait
 
 ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${OUTPUT_DIR}/chunk_indices.txt"
 
-chunk_count=$(wc -l "${OUTPUT_DIR}/chunk_indices.txt")
+chunk_count=$(wc -l < "${OUTPUT_DIR}/chunk_indices.txt")
 
 ######################################################################################################
 #### Submit First Job array
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${scripts_DIR}/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${scripts_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "." "${TMP_DIR}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
@@ -109,16 +109,16 @@ knee_plot_array_ID=$()
 ######################################################################################################
 #### Submit single cell extraction arrays
 
-sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$knee_plot_array_ID "${scripts_DIR}/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$knee_plot_array_ID "${SCRIPTS_DIR}/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" ".")
 
 echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 
 ######################################################################################################
 #### Submit single cell variant calling array
-cell_count=$(wc -l "${OUTPUT_DIR}/real_cells.txt")
+cell_count=$(wc -l < "${OUTPUT_DIR}/real_cells.txt")
 mkdir -p "${OUTPUT_DIR}/sc_ouputs"
 
-sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${scripts_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${OUTPUT_DIR}/sc_ouputs")
+sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${SCRIPTS_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${OUTPUT_DIR}/sc_ouputs")
 
 echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 
@@ -142,7 +142,7 @@ done > "${OUTPUT_DIR}/barcodes.map"
 
 
 
-# joint_calling_array_id=$(sbatch --parsable --dependency=afterok:$sc_var_array_ID "${scripts_DIR}/joint_calling_array.sh")
+# joint_calling_array_id=$(sbatch --parsable --dependency=afterok:$sc_var_array_ID "${SCRIPTS_DIR}/joint_calling_array.sh")
 
 # echo "Joint Calling Job ID: ${joint_calling_job_id}"
 
