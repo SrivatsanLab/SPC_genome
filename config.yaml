@@ -1,0 +1,47 @@
+# SPC Genome Project Configuration
+# Edit paths below to match your system setup
+
+# Data paths
+data:
+  # Main data directory (relative to project root)
+  base_dir: "../sc_PolE_novaseq"
+
+  # Input sequencing files
+  read1: ""  # Path to read1.fastq.gz
+  read2: ""  # Path to read2.fastq.gz
+
+# Reference genome
+reference:
+  # Directory containing genome fasta, fasta index, and BWA index
+  genome_dir: "/shared/biodata/reference/GATK/hg38/"
+
+# Processing parameters
+processing:
+  # Number of chunks for parallel processing
+  n_chunks: 500
+
+  # Temporary directory (leave empty to use system default)
+  # Set this if you need to override the default mktemp location
+  tmp_dir: ""
+
+# Output settings
+output:
+  # Base output directory
+  base_dir: "./output"
+
+  # Sample name prefix
+  sample_name: "sample"
+
+# Cluster settings (SLURM)
+cluster:
+  # Default CPUs per task
+  cpus: 2
+
+  # Default memory (GB)
+  memory: 16
+
+  # Default time limit (format: D-HH:MM:SS)
+  time: "2-0"
+
+  # Partition
+  partition: "campus"

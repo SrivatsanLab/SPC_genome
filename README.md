@@ -1,47 +1,221 @@
-### Installation:
+# SPC Genome - Single Cell Genomics Pipeline
 
-for now, simply clone the repo, and ensure scripts are executable:
+Computational pipeline for processing and analyzing single-cell capture whole genome sequencing (CapWGS) data, with a focus on somatic mutation detection in PolE-P286R K562 cells.
 
-	git clone https://github.com/SrivatsanLab/SPC_genome
-	
-	chmod -R u+x  SPC_genome
+## Overview
 
-### Processing CapWGS data
+This repository contains:
+- **Preprocessing pipeline:** Parallel processing of CapWGS data using SLURM arrays
+- **Variant calling:** Single-cell and bulk variant detection
+- **Analysis notebooks:** Downstream analysis including mutational spectra and phylogenetic analysis
 
-The main script for preprocessing CapWGS data will split your input fastq's into a desired number of chunks, and process them in parallel using SLURM job arrays: 
+## Quick Start
 
-	SPC_genome/WGS_PP.sh -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome.fa> -r <read_count>
+### 1. Installation
 
-	Required arguments:
-	  -o    <output_name>           Desired sample name (prefix for outputs)
-	  -1    <read1.fastq.gz>        Read 1 FASTQ file
-	  -2    <read2.fastq.gz>        Read 2 FASTQ file
-	  -g    <reference_genome>      Path to directory containing and genome fasta, fasta index, and BWA index folder
-	  -r    <READ_COUNT>            Number of reads (from sequencing run info)
+**Prerequisites:**
+- Access to Fred Hutch HPC cluster (Rhino/Gizmo)
+- Micromamba package manager
+- SLURM job scheduler
 
-	Optional arguments:
-	  -s    <scripts_DIR>           path to the SPC_genome directory (default: ./SPC_genome)
-	  -O    <output_dir>            desired output directory (default: .)
-	  -n    <N_CHUNKS>              Number of subjobs for SLURM arrays. Default: 500
-	  -t    <TMP_DIR>               Temp directory for fastq chunks. Provide in order to override mktemp (e.g. when scratch space is limited)
-	  -h                            Show this help message and exit
-	  
-The subdirectory `SPC_genome/scr` contains scripts used for each sub job, and other useful utilities.
+**Install the environment:**
+```bash
+git clone https://github.com/SrivatsanLab/SPC_genome
+cd SPC_genome
+./setup.sh
+```
 
-### Other preprocessing scripts
+This will create a micromamba environment with all required dependencies.
 
-`amplicon_analysis/` : contains scripts for preprocessing and variant calling of SPC amplicon sequencing data
+**Activate the environment:**
+```bash
+micromamba activate ./env
+```
 
-`bin` : contains miscellaneous scripts for examining CapWGS data
+### 2. Configuration
 
-### Analysis notebooks
+Edit `config.yaml` with your data paths:
+```yaml
+data:
+  base_dir: "../sc_PolE_novaseq"
+  read1: "/path/to/sample_R1.fastq.gz"
+  read2: "/path/to/sample_R2.fastq.gz"
 
-notebooks in `species_mixing/` : Analysis of the species mixing CapWGS dataset
+reference:
+  genome_dir: "/shared/biodata/reference/GATK/hg38/"
 
-`bulk_spectra_analysis.ipynb` : Analysis of the bulk WGS PolE-P286R K562 data
+output:
+  base_dir: "./output"
+  sample_name: "my_sample"
+```
 
-`sc_analysis.ipynb` : Analysis of the processed PolE-P286R K562 CapWGS data
+See [`DATA_README.md`](DATA_README.md) for detailed data requirements.
 
-### `results/`:
+### 3. Run Preprocessing
 
-This folder contains processed outputs generated in the analysis notebooks
+Process CapWGS data using the main pipeline script:
+
+```bash
+./WGS_PP.sh \
+  -o sample_name \
+  -1 /path/to/read1.fastq.gz \
+  -2 /path/to/read2.fastq.gz \
+  -r 1000000000 \
+  -g /shared/biodata/reference/GATK/hg38/
+```
+
+**Required arguments:**
+- `-o` Sample name (output prefix)
+- `-1` Read 1 FASTQ file
+- `-2` Read 2 FASTQ file
+- `-r` Total read count
+- `-g` Reference genome directory
+
+**Optional arguments:**
+- `-s` Scripts directory (default: `./SPC_genome`)
+- `-O` Output directory (default: `.`)
+- `-n` Number of chunks for parallelization (default: 500)
+- `-t` Temporary directory (overrides mktemp)
+
+### 4. Run Analysis
+
+Start JupyterLab to run analysis notebooks:
+```bash
+# On rhino node
+micromamba activate ./env
+jupyter lab
+```
+
+**Analysis notebooks:**
+- `sc_analysis.ipynb` - Main single-cell CapWGS analysis
+- `bulk_spectra_analysis.ipynb` - Bulk WGS mutational spectra
+- `species_mixing/` - Species mixing experiment analysis
+
+## Repository Structure
+
+```
+SPC_genome/
+├── WGS_PP.sh                      # Main preprocessing script
+├── scr/                           # Helper scripts for pipeline
+│   ├── PP_array.sh               # Parallel preprocessing array job
+│   ├── sc_var_array.sh           # Single-cell variant calling
+│   ├── make_variant_anndata.py   # Create AnnData from VCF
+│   └── ...
+├── amplicon_analysis/             # Amplicon sequencing scripts
+├── bin/                           # Utility scripts
+├── results/                       # Generated outputs (gitignored)
+├── sc_analysis.ipynb              # Main analysis notebook
+├── bulk_spectra_analysis.ipynb   # Bulk analysis notebook
+├── environment.yml                # Micromamba environment
+├── config.yaml                    # Configuration file
+├── setup.sh                       # Installation script
+└── DATA_README.md                 # Data organization guide
+```
+
+## Pipeline Workflow
+
+1. **FASTQ Splitting** - Split input FASTQs into chunks for parallel processing
+2. **Alignment** - BWA-MEM alignment to reference genome
+3. **Cell Detection** - Knee plot analysis to identify real cells
+4. **Single Cell Extraction** - Extract reads per cell barcode
+5. **Variant Calling** - GATK HaplotypeCaller per cell
+6. **Joint Calling** - Combine variants across cells
+7. **AnnData Generation** - Create AnnData object for analysis
+
+## Requirements
+
+### Computational Resources
+
+**Recommended SLURM resources:**
+- CPUs: 2-4 per job
+- Memory: 16-32 GB per job
+- Time: 2-4 days for full pipeline
+- Partitions: `campus` or `short`
+
+**Storage:**
+- ~60-125 GB per sample
+- Use `/fh/fast/` for active analysis
+- Archive to S3 for long-term storage
+
+### Software Dependencies
+
+Core tools (installed via micromamba):
+- Python 3.11+
+- BWA, Samtools, BCFtools
+- GATK4, Picard
+- Scanpy, AnnData
+- NumPy, Pandas, Matplotlib
+
+See [`environment.yml`](environment.yml) for complete list.
+
+## Data
+
+**Not included in repository:**
+- Raw sequencing data (`.fastq.gz`)
+- Aligned BAM files
+- VCF files
+- Processed AnnData objects
+
+Data should be stored in `../sc_PolE_novaseq/` (see [`DATA_README.md`](DATA_README.md))
+
+## Cluster-Specific Information
+
+This pipeline is optimized for the **Fred Hutch HPC cluster** (Rhino/Gizmo):
+
+- Login nodes: `rhino01-03`
+- Job scheduler: SLURM
+- Reference genomes: `/shared/biodata/reference/GATK/`
+- Module system: Lmod
+
+For other HPC systems, you may need to:
+- Adjust SLURM directives in scripts
+- Update reference genome paths
+- Modify temporary storage locations
+
+## Troubleshooting
+
+### Common Issues
+
+**Job fails with "out of memory":**
+```bash
+# Increase memory allocation
+sbatch --mem=32G script.sh
+```
+
+**Permission denied:**
+```bash
+chmod +x *.sh scr/*.sh
+```
+
+**Module not found:**
+```bash
+# Ensure environment is activated
+micromamba activate ./env
+```
+
+**Can't find data files:**
+- Check paths in `config.yaml`
+- Use absolute paths if needed
+- See [`DATA_README.md`](DATA_README.md)
+
+### Getting Help
+
+- **Pipeline issues:** Open an issue on GitHub
+- **Fred Hutch cluster:** Email scicomp@fredhutch.org
+- **SLURM jobs:** Use `squeue -u $USER` to check status
+
+## Citation
+
+If you use this pipeline, please cite:
+[Citation information to be added]
+
+## License
+
+See [`LICENSE`](LICENSE) for details.
+
+## Contact
+
+**Srivatsan Lab**
+Fred Hutchinson Cancer Center
+
+For questions about this repository, please open an issue on GitHub.

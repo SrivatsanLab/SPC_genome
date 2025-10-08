@@ -1,0 +1,41 @@
+name: spc_genome
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # Python version
+  - python=3.11
+
+  # Core scientific computing
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+
+  # Single-cell analysis
+  - scanpy
+  - anndata
+
+  # Genomics tools
+  - cyvcf2
+  - pysam
+
+  # Utilities
+  - tqdm
+  - pyyaml
+
+  # Jupyter environment (for notebooks)
+  - jupyterlab
+  - ipykernel
+  - notebook
+
+  # Bioinformatics tools
+  - bwa
+  - samtools
+  - bcftools
+  - gatk4
+  - picard
+
+  # Code formatting (optional)
+  - black
+  - isort

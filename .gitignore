@@ -1,0 +1,71 @@
+# Data directories
+data/
+../sc_PolE_novaseq/
+../bulk_PolE_*/
+
+# Results and outputs
+results/
+*.bam
+*.bai
+*.vcf
+*.vcf.gz
+*.vcf.gz.tbi
+*.g.vcf
+*.g.vcf.gz
+*.h5ad
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+/loc/
+
+# SLURM outputs
+SLURM_outs/
+slurm-*.out
+*.out
+*.err
+
+# Chunk files
+*chunk_*
+chunk_indices.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.envrc
+
+# Micromamba/Conda
+envs/
+.conda/
+.micromamba/
+
+# Logs
+*.log
+
+# Coverage and testing
+.coverage
+htmlcov/
+.pytest_cache/
