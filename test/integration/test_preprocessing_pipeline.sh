@@ -1,19 +1,20 @@
 #!/bin/bash
 #
-# Convenience script to run preprocessing pipeline test
-# This script reads configuration from config.yaml and runs WGS_PP.sh
+# Integration test for preprocessing pipeline
+# This script runs the full CapWGS_PP.sh pipeline on test data
 #
 
 set -euo pipefail
 
 # Default values (can be overridden by command-line arguments)
 OUTPUT_NAME="sc_PolE_test"
-READ1="./data/K562_tree/raw/k562_tree_1_S1_R1_001.fastq.gz"
-READ2="./data/K562_tree/raw/k562_tree_1_S1_R2_001.fastq.gz"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+READ1="$PROJECT_ROOT/data/K562_tree/raw/k562_tree_1_S1_R1_001.fastq.gz"
+READ2="$PROJECT_ROOT/data/K562_tree/raw/k562_tree_1_S1_R2_001.fastq.gz"
 READ_COUNT=9000000000  # Estimate - adjust if you have exact count
 REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38/"
-SCRIPTS_DIR="./scr"
-OUTPUT_DIR="./data/K562_tree"
+SCRIPTS_DIR="$PROJECT_ROOT"
+OUTPUT_DIR="$PROJECT_ROOT/data/K562_tree"
 N_CHUNKS=500
 TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"  # Default temp directory
 
@@ -127,7 +128,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Build command
-CMD="sbatch WGS_PP.sh -o $OUTPUT_NAME -1 $READ1 -2 $READ2 -r $READ_COUNT -g $REFERENCE_GENOME -s $SCRIPTS_DIR -O $OUTPUT_DIR -n $N_CHUNKS"
+CMD="sbatch $PROJECT_ROOT/CapWGS_PP.sh -o $OUTPUT_NAME -1 $READ1 -2 $READ2 -r $READ_COUNT -g $REFERENCE_GENOME -s $SCRIPTS_DIR -O $OUTPUT_DIR -n $N_CHUNKS"
 
 if [ -n "$TMP_DIR" ]; then
     CMD="$CMD -t $TMP_DIR"

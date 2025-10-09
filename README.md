@@ -82,7 +82,24 @@ Process CapWGS data using the main pipeline script:
 - `-n` Number of chunks for parallelization (default: 500)
 - `-t` Temporary directory (overrides mktemp)
 
-### 4. Run Analysis
+### 4. Testing (Optional)
+
+Run the test suite to verify your installation:
+
+```bash
+# Run all tests
+./test/test_runner.sh
+
+# Run only unit tests (fast, no SLURM jobs)
+./test/test_runner.sh unit
+
+# Run only integration tests (slower, submits SLURM jobs)
+./test/test_runner.sh integration
+```
+
+See [`test/README.md`](test/README.md) for details on writing and running tests.
+
+### 5. Run Analysis
 
 Start JupyterLab to run analysis notebooks:
 ```bash
@@ -104,11 +121,16 @@ jupyter lab
 ```
 SPC_genome/
 ├── CapWGS_PP.sh                   # Main preprocessing script
-├── scr/                           # Helper scripts for pipeline
+├── scripts/                       # Helper scripts for pipeline
 │   ├── PP_array.sh               # Parallel preprocessing array job
 │   ├── sc_var_array.sh           # Single-cell variant calling
 │   ├── make_variant_anndata.py   # Create AnnData from VCF
 │   └── ...
+├── test/                          # Test suite
+│   ├── test_runner.sh            # Main test runner
+│   ├── unit/                     # Unit tests
+│   ├── integration/              # Integration tests
+│   └── fixtures/                 # Test data
 ├── amplicon_analysis/             # Amplicon sequencing scripts
 ├── bin/                           # Generated files (indices, cell lists, metadata)
 │   └── benchmarking/             # Benchmarking metadata files
@@ -211,7 +233,7 @@ sbatch --mem=32G script.sh
 
 **Permission denied:**
 ```bash
-chmod +x *.sh scr/*.sh
+chmod +x *.sh scripts/*.sh
 ```
 
 **Module not found:**

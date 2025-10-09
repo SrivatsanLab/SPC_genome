@@ -30,7 +30,7 @@ if [ -f "$CONFIG_FILE" ]; then
     eval $(parse_yaml "$CONFIG_FILE" "CONFIG_")
 
     # Set defaults from config
-    SCRIPTS_DIR="."  # Project root directory (contains bin/, scr/, barcodes/)
+    SCRIPTS_DIR="."  # Project root directory (contains bin/, scripts/, barcodes/)
     OUTPUT_DIR="${CONFIG_output_base_dir:-.}"
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
     TMP_DIR="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
@@ -138,21 +138,21 @@ chunk_count=$(wc -l < "${OUTPUT_DIR}/chunk_indices.txt")
 ######################################################################################################
 #### Submit First Job array
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scr/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scr/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${OUTPUT_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${OUTPUT_DIR}" "${SCRIPTS_DIR}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
 #### Submit single cell extraction arrays
 
-sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scr/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
 
 echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 

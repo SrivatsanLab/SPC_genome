@@ -72,3 +72,4 @@ docs/summaries/
 .coverage
 htmlcov/
 .pytest_cache/
+test/fixtures/outputs/
