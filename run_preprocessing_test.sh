@@ -8,12 +8,12 @@ set -euo pipefail
 
 # Default values (can be overridden by command-line arguments)
 OUTPUT_NAME="sc_PolE_test"
-READ1="./data/raw/k562_tree_1_S1_R1_001.fastq.gz"
-READ2="./data/raw/k562_tree_1_S1_R2_001.fastq.gz"
+READ1="./data/K562_tree/raw/k562_tree_1_S1_R1_001.fastq.gz"
+READ2="./data/K562_tree/raw/k562_tree_1_S1_R2_001.fastq.gz"
 READ_COUNT=9000000000  # Estimate - adjust if you have exact count
 REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38/"
 SCRIPTS_DIR="./scr"
-OUTPUT_DIR="."
+OUTPUT_DIR="./data/K562_tree"
 N_CHUNKS=500
 TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"  # Default temp directory
 

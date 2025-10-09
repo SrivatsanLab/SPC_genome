@@ -42,7 +42,7 @@ if [ -f "$CONFIG_FILE" ]; then
 else
     # Hardcoded defaults if config.yaml doesn't exist
     SCRIPTS_DIR="."  # Project root directory
-    OUTPUT_DIR="."
+    OUTPUT_DIR="./data/K562_tree"
     N_CHUNKS=500
     TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
     REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38"

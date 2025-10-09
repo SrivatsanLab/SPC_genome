@@ -1,13 +1,18 @@
 # SPC Genome - Single Cell Genomics Pipeline
 
-Computational pipeline for processing and analyzing single-cell capture whole genome sequencing (CapWGS) data, with a focus on somatic mutation detection in PolE-P286R K562 cells.
+Computational pipeline for processing and analyzing Capsule-based Whole Genome Sequencing (CapWGS) data, with a focus on somatic mutation detection in PolE-P286R K562 cells.
 
 ## Overview
 
-This repository contains:
+This repository contains the computational pipeline for the CapWGS method, enabling high-quality whole genome sequencing of single cells through microfluidic capsule-based cell isolation and linear amplification.
+
+**Key components:**
 - **Preprocessing pipeline:** Parallel processing of CapWGS data using SLURM arrays
-- **Variant calling:** Single-cell and bulk variant detection
-- **Analysis notebooks:** Downstream analysis including mutational spectra and phylogenetic analysis
+- **Variant calling:** Single-cell and bulk variant detection using GATK
+- **Benchmarking:** Comparison with existing scWGS methods (LIANTI, PTA)
+- **Analysis notebooks:** Downstream analysis including mutational spectra and phylogenetic reconstruction
+
+**Reference:** Capsule-based Whole Genome Sequencing enables high-quality single cell genomics ([bioRxiv](https://www.biorxiv.org/content/10.1101/2025.03.14.643253v1))
 
 ## Quick Start
 
@@ -87,8 +92,11 @@ jupyter lab
 ```
 
 **Analysis notebooks:**
-- `sc_analysis.ipynb` - Main single-cell CapWGS analysis
-- `bulk_spectra_analysis.ipynb` - Bulk WGS mutational spectra
+- `notebooks/K562_tree/` - K562 tree experiment analysis notebooks
+  - `sc_analysis.ipynb` - Main single-cell CapWGS analysis
+  - `bulk_spectra_analysis.ipynb` - Bulk WGS mutational spectra
+- `notebooks/benchmarking/` - CapWGS benchmarking analysis
+  - `benchmarking.ipynb` - Comparison with public scWGS datasets
 - `species_mixing/` - Species mixing experiment analysis
 
 ## Repository Structure
@@ -102,11 +110,24 @@ SPC_genome/
 │   ├── make_variant_anndata.py   # Create AnnData from VCF
 │   └── ...
 ├── amplicon_analysis/             # Amplicon sequencing scripts
-├── bin/                           # Utility scripts
+├── bin/                           # Generated files (indices, cell lists, metadata)
+│   └── benchmarking/             # Benchmarking metadata files
+├── data/                          # Project data (gitignored)
+│   ├── K562_tree/                # K562 tree experiment data
+│   │   ├── raw/                  # Raw FASTQ files
+│   │   └── test/                 # Test data
+│   └── benchmarking/             # Benchmarking datasets
+│       └── aligned/              # Aligned public scWGS data
 ├── docs/summaries/                # Documentation summaries (gitignored)
+├── notebooks/                     # Analysis notebooks
+│   ├── K562_tree/                # K562 tree experiment analysis
+│   │   ├── sc_analysis.ipynb    # Main single-cell analysis
+│   │   └── bulk_spectra_analysis.ipynb
+│   └── benchmarking/             # CapWGS benchmarking analysis
+│       └── benchmarking.ipynb   # Public data comparison
 ├── results/                       # Generated outputs (gitignored)
-├── sc_analysis.ipynb              # Main analysis notebook
-├── bulk_spectra_analysis.ipynb   # Bulk analysis notebook
+│   ├── K562_tree/                # K562 tree results
+│   └── benchmarking/             # Benchmarking results
 ├── environment.yml                # Micromamba environment
 ├── config.yaml                    # Configuration file
 ├── setup.sh                       # Setup verification script
@@ -157,7 +178,12 @@ See [`environment.yml`](environment.yml) for complete list.
 - VCF files
 - Processed AnnData objects
 
-Data should be stored in `../sc_PolE_novaseq/` (see [`DATA_README.md`](DATA_README.md))
+This repository supports multiple datasets:
+- **K562_tree**: PolE-P286R K562 phylogenetic tree experiment
+- **benchmarking**: CapWGS comparison with public scWGS methods (LIANTI, PTA)
+- **species_mixing**: Species mixing validation experiment
+
+Data is organized in `data/` with subdirectories for each experiment (see [`DATA_README.md`](DATA_README.md))
 
 ## Cluster-Specific Information
 
