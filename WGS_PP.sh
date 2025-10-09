@@ -126,8 +126,9 @@ CHUNK_LINES=$(( total_lines / N_CHUNKS ))
 CHUNK_LINES=$(( CHUNK_LINES / 4 * 4 ))
 
 # Step 3: Split each FASTQ file into chunks based on respective chunk size
-zcat "$READ1" | split -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
-zcat "$READ2" | split -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
+# Limit to specified read count, then split into chunks
+zcat "$READ1" | head -n $total_lines | split -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
+zcat "$READ2" | head -n $total_lines | split -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
 wait
 
 ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${OUTPUT_DIR}/chunk_indices.txt"
