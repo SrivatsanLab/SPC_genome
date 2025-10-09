@@ -22,15 +22,15 @@ This repository contains:
 ```bash
 git clone https://github.com/SrivatsanLab/SPC_genome
 cd SPC_genome
-./setup.sh
+
+# Create the environment
+micromamba create -n spc_genome -f environment.yml
+
+# Activate the environment
+micromamba activate spc_genome
 ```
 
-This will create a micromamba environment with all required dependencies.
-
-**Activate the environment:**
-```bash
-micromamba activate ./env
-```
+You can also run `./setup.sh` for a guided setup that checks dependencies.
 
 ### 2. Configuration
 
@@ -82,7 +82,7 @@ Process CapWGS data using the main pipeline script:
 Start JupyterLab to run analysis notebooks:
 ```bash
 # On rhino node
-micromamba activate ./env
+micromamba activate spc_genome
 jupyter lab
 ```
 
@@ -103,12 +103,13 @@ SPC_genome/
 │   └── ...
 ├── amplicon_analysis/             # Amplicon sequencing scripts
 ├── bin/                           # Utility scripts
+├── docs/summaries/                # Documentation summaries (gitignored)
 ├── results/                       # Generated outputs (gitignored)
 ├── sc_analysis.ipynb              # Main analysis notebook
 ├── bulk_spectra_analysis.ipynb   # Bulk analysis notebook
 ├── environment.yml                # Micromamba environment
 ├── config.yaml                    # Configuration file
-├── setup.sh                       # Installation script
+├── setup.sh                       # Setup verification script
 └── DATA_README.md                 # Data organization guide
 ```
 
@@ -190,7 +191,7 @@ chmod +x *.sh scr/*.sh
 **Module not found:**
 ```bash
 # Ensure environment is activated
-micromamba activate ./env
+micromamba activate spc_genome
 ```
 
 **Can't find data files:**

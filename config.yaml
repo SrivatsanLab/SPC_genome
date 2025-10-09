@@ -16,8 +16,11 @@ data:
 
 # Reference genome
 reference:
-  # Directory containing genome fasta, fasta index, and BWA index
-  genome_dir: "/shared/biodata/reference/GATK/hg38/"
+  # Directory containing genome fasta, fasta index, and BWA index (GATK bundle for hg38)
+  # Fasta: /shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta
+  # BWA index: /shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64.*
+  # This reference works for both alignment and GATK variant calling
+  genome_dir: "/shared/biodata/reference/GATK/hg38"
 
 # Processing parameters
 processing:

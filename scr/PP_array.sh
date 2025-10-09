@@ -15,7 +15,7 @@ genome="$2"
 scripts_DIR="$3"
 TMP_DIR="$4"
 
-barcodes="${barcodes}/barcodes"
+barcodes="${scripts_DIR}/barcodes"
 demux_scr="${scripts_DIR}/bin/atrandi_demux.py"
 
 chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
@@ -27,10 +27,10 @@ READ2="${TMP_DIR}/read2_chunk_${chunk}"
 # Demultiplexing- extract barcode from read2, add to headers, delete reads lacking a legitimate barcode
 ##########################################################################################################################
 
-python $demux_scr $READ1 $READ2 $barcodes
---R1_output "${TMP_DIR}/corr_read1_chunk_${chunk}" \
---R2_output "${TMP_DIR}/corr_read2_chunk_${chunk}" \
---gzip False
+python $demux_scr $READ1 $READ2 $barcodes \
+  --R1_output "${TMP_DIR}/corr_read1_chunk_${chunk}" \
+  --R2_output "${TMP_DIR}/corr_read2_chunk_${chunk}" \
+  --gzip False
 
 #delete uncorrected fastqs
 rm $READ1 $READ2

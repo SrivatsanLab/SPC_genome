@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J concat_sams
 #SBATCH -o SLURM_outs/%x_%j.out
-#SBATCG -c 4
+#SBATCH -c 4
 
 ###########################################################################################################################
 # This job concatenates the processed chunks, and converts to sorted and indexed bam format. Next it computes read counts #
