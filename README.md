@@ -61,7 +61,7 @@ See [`DATA_README.md`](DATA_README.md) for detailed data requirements.
 Process CapWGS data using the main pipeline script:
 
 ```bash
-./WGS_PP.sh \
+./CapWGS_PP.sh \
   -o sample_name \
   -1 /path/to/read1.fastq.gz \
   -2 /path/to/read2.fastq.gz \
@@ -103,7 +103,7 @@ jupyter lab
 
 ```
 SPC_genome/
-├── WGS_PP.sh                      # Main preprocessing script
+├── CapWGS_PP.sh                   # Main preprocessing script
 ├── scr/                           # Helper scripts for pipeline
 │   ├── PP_array.sh               # Parallel preprocessing array job
 │   ├── sc_var_array.sh           # Single-cell variant calling
