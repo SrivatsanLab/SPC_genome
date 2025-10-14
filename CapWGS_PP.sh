@@ -1,7 +1,7 @@
 #!/bin/bash
-#sbatch --job-name=Preprocessing
-#sbatch --output=SLURM_outs/%x_%j.out
-#sbatch -c 2
+#SBATCH --job-name=Preprocessing
+#SBATCH --output=SLURM_outs/%x_%j.out
+#SBATCH -c 2
 
 mkdir -p SLURM_outs/
 
@@ -111,6 +111,29 @@ echo "Scripts Directory: ${SCRIPTS_DIR}"
 echo "Barcode Directory: ${BARCODE_DIR}"
 echo "Output Directory: ${OUTPUT_DIR}"
 
+# Create necessary directories
+mkdir -p "${OUTPUT_DIR}"
+mkdir -p "${TMP_DIR}"
+
+# Determine bin directory, aligned data directory, and results directory based on output directory structure
+# If OUTPUT_DIR is results/test/, use bin/test/, data/K562_tree/test/aligned/, and results/test/
+# Otherwise use bin/[sample_name]/, data/[sample_name]/aligned/, and results/[sample_name]/
+if [[ "${OUTPUT_DIR}" == *"/test"* ]]; then
+    BIN_DIR="${SCRIPTS_DIR}/bin/test"
+    ALIGNED_DIR="${SCRIPTS_DIR}/data/K562_tree/test/aligned"
+    RESULTS_DIR="${SCRIPTS_DIR}/results/test"
+else
+    BIN_DIR="${SCRIPTS_DIR}/bin/${OUTPUT_NAME}"
+    ALIGNED_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}/aligned"
+    RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
+fi
+mkdir -p "${BIN_DIR}"
+mkdir -p "${ALIGNED_DIR}"
+mkdir -p "${RESULTS_DIR}"
+echo "Bin Directory: ${BIN_DIR}"
+echo "Aligned Data Directory: ${ALIGNED_DIR}"
+echo "Results Directory: ${RESULTS_DIR}"
+
 ######################################################################################################
 #### chunk the fastqs
 
@@ -131,39 +154,43 @@ zcat "$READ1" | head -n $total_lines | split -l $CHUNK_LINES - "$TMP_DIR/read1_c
 zcat "$READ2" | head -n $total_lines | split -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
 wait
 
-ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${OUTPUT_DIR}/chunk_indices.txt"
+ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${BIN_DIR}/chunk_indices.txt"
 
-chunk_count=$(wc -l < "${OUTPUT_DIR}/chunk_indices.txt")
+chunk_count=$(wc -l < "${BIN_DIR}/chunk_indices.txt")
 
 ######################################################################################################
 #### Submit First Job array
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array.sh" "${BIN_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${OUTPUT_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${ALIGNED_DIR}" "${BIN_DIR}" "${SCRIPTS_DIR}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
 #### Submit single cell extraction arrays
 
-sc_from_chunks_array_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/sc_from_chunks.sh" "${OUTPUT_DIR}/chunk_indices.txt" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+# This job extracts reads for each detected cell from the chunked SAM files
+sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/sc_from_chunks.sh" "${BIN_DIR}/chunk_indices.txt" "${TMP_DIR}" "${BIN_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
 
-echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
+echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
 
 ######################################################################################################
 #### Submit single cell variant calling array
-cell_count=$(wc -l < "${OUTPUT_DIR}/real_cells.txt")
-mkdir -p "${OUTPUT_DIR}/sc_ouputs"
 
-sc_var_array_ID=$(sbatch --parsable --array=1-$cell_count --dependency=afterok:$sc_comp_array_ID "${SCRIPTS_DIR}/sc_var_array.sh" "${TMP_DIR}" "${OUTPUT_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${OUTPUT_DIR}/sc_ouputs")
+# This wrapper script will:
+# 1. Read real_cells.txt to determine how many cells were detected
+# 2. Submit the variant calling array job with the correct array size
+# It runs after sc_from_chunks completes
 
-echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
+submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_job_ID "${SCRIPTS_DIR}/scripts/submit_sc_variant_calling.sh" "${TMP_DIR}" "${BIN_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${ALIGNED_DIR}" "${SCRIPTS_DIR}")
+
+echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 
 ######################################################################################################
 #### Submit matched bulk variant calling job
@@ -173,21 +200,17 @@ echo "Compiling single cell bam files with array job ID: ${sc_array_ID}"
 # echo "Bulk calling job array ID: ${bulk_v_job_ID}"
 
 ######################################################################################################
-#### joint calling
+#### Joint calling and h5ad generation
 
-#### Prep for joint calling:
+# This wrapper script will:
+# 1. Generate genomic intervals for parallelization
+# 2. Create barcodes.map from VCF files
+# 3. Submit joint calling array job (GenomicsDBImport + GenotypeGVCFs per interval)
+# 4. Compile interval h5ad files into final AnnData object in results/
 
-for f in sc_outputs/*.g.vcf.gz; do
-  [[ -f "${f}.tbi" ]] || continue  # skip if no index file
-  bc=$(basename "$f" .g.vcf.gz)
-  echo -e "${bc}\t${f}"
-done > "${OUTPUT_DIR}/barcodes.map"
+submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${BIN_DIR}" "${ALIGNED_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${OUTPUT_NAME}")
 
-
-
-# joint_calling_array_id=$(sbatch --parsable --dependency=afterok:$sc_var_array_ID "${SCRIPTS_DIR}/joint_calling_array.sh")
-
-# echo "Joint Calling Job ID: ${joint_calling_job_id}"
+echo "Joint calling and h5ad generation submission job ID: ${submit_jc_job_ID}"
 
 ######################################################################################################
 #### Submit anndata job

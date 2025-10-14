@@ -50,10 +50,13 @@ module load GATK
 # variant Calling with GATK
 echo "Variant Calling for cell: ${barcode}"
 
+# Construct reference path - genome variable is the directory, need to append filename
+REFERENCE="${genome}/Homo_sapiens_assembly38.fasta"
+
 gatk --java-options "-Xmx4g" HaplotypeCaller  \
-   -R "${genome}" \
+   -R "${REFERENCE}" \
    -I "${GATK_bam}" \
    -O "${output_vcf}" \
    -ERC GVCF
-   
-gatk IndexFeatureFile -F "${output_vcf}"
+
+# Index is automatically created by HaplotypeCaller, no need to index separately

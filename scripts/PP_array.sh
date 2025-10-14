@@ -4,9 +4,15 @@
 #SBATCH -c 4
 #SBATCH -p short
 
+set -euo pipefail
+
 ##########################################################################################################################
 # This job performs custom de-multiplexing and standard bioinformatics (trimming, alignment) on chunks of paired fastq's #
 ##########################################################################################################################
+
+# Activate conda environment
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate spc_genome
 
 mkdir -p SLURM_outs/array_outs
 
@@ -16,7 +22,7 @@ scripts_DIR="$3"
 TMP_DIR="$4"
 
 barcodes="${scripts_DIR}/barcodes"
-demux_scr="${scripts_DIR}/bin/atrandi_demux.py"
+demux_scr="${scripts_DIR}/scripts/atrandi_demux.py"
 
 chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
 
@@ -62,11 +68,14 @@ READ2="${TMP_DIR}/corr_read2_chunk_${chunk}_val_2.fq.gz"
 
 module load BWA
 
+# Construct BWA index path
+BWA_INDEX="${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
+
 # Output file name
 SAM_FILE="${TMP_DIR}/${chunk}.sam"
 
 echo "Aligning with BWA-MEM"
-bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${genome}" "${READ1}" "${READ2}"
+bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
 
 # Delete fastq's
 rm "${READ1}" "${READ2}"

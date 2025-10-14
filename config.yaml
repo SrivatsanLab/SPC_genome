@@ -7,8 +7,8 @@ data:
   base_dir: "./data"
 
   # Raw input sequencing files (symlinked)
-  read1: "./data/raw/k562_tree_1_S1_R1_001.fastq.gz"
-  read2: "./data/raw/k562_tree_1_S1_R2_001.fastq.gz"
+  read1: "./data/K562_tree/raw/k562_tree_1_S1_R1_001.fastq.gz"
+  read2: "./data/K562_tree/raw/k562_tree_1_S1_R2_001.fastq.gz"
 
   # Read count (from sequencing run)
   # Estimate: ~9 billion reads (adjust based on actual sequencing report)
@@ -34,10 +34,10 @@ processing:
 # Output settings
 output:
   # Base output directory
-  base_dir: "./output"
+  base_dir: "./results"
 
   # Sample name prefix
-  sample_name: "sample"
+  sample_name: "K562_tree"
 
 # Cluster settings (SLURM)
 cluster:

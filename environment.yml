@@ -19,23 +19,21 @@ dependencies:
   # Genomics tools
   - cyvcf2
   - pysam
+  - mutyper
 
   # Utilities
   - tqdm
   - pyyaml
+  - python-levenshtein
 
   # Jupyter environment (for notebooks)
   - jupyterlab
   - ipykernel
   - notebook
 
-  # Bioinformatics tools
-  - bwa
-  - samtools
-  - bcftools
-  - gatk4
-  - picard
-
   # Code formatting (optional)
   - black
   - isort
+
+  # Note: bwa, samtools, bcftools, gatk4, and picard are available via lmod modules
+  # Load them in scripts with: module load BWA, module load SAMtools, etc.
