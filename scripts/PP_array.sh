@@ -3,6 +3,7 @@
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 4
 #SBATCH -p short
+#SBATCH -t 8:00:00
 
 set -euo pipefail
 
