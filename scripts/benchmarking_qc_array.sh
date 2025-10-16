@@ -16,12 +16,13 @@ set -euo pipefail
 SAMPLE_LIST="$1"      # File containing sample names (one per line)
 OUTPUT_DIR="$2"       # Output directory for QC metrics
 REFERENCE="$3"        # Reference genome fasta
+BAM_DIR="$4"          # Directory containing BAM files
 
 # Get sample name from array task ID
 SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${SAMPLE_LIST}")
 
 # Input BAM file
-BAM_FILE="data/benchmarking/aligned/${SAMPLE}.bam"
+BAM_FILE="${BAM_DIR}/${SAMPLE}.bam"
 
 # Output files
 ALIGNMENT_METRICS="${OUTPUT_DIR}/${SAMPLE}_alignment_metrics.txt"
