@@ -59,23 +59,65 @@ if [ "$cell_count" -eq 0 ]; then
     exit 1
 fi
 
-# Submit joint calling array job
+# Submit joint calling array job(s)
+# SLURM may have undocumented limits on array sizes, so split into batches if needed
+MAX_ARRAY_SIZE=1000  # Conservative limit to avoid SLURM issues
 echo "Submitting joint calling array..."
-jc_array_ID=$(sbatch --parsable \
-    --array=1-${interval_count} \
-    "${SCRIPTS_DIR}/scripts/joint_calling_array.sh" \
-    "${TMP_JC_DIR}" \
-    "${BARCODES_MAP}" \
-    "${INTERVALS_FILE}" \
-    "${REFERENCE}" \
-    "${SCRIPTS_DIR}")
 
-echo "Joint calling array submitted: ${jc_array_ID}"
+if [ "${interval_count}" -le "${MAX_ARRAY_SIZE}" ]; then
+    # Small enough to submit as single array
+    jc_array_ID=$(sbatch --parsable \
+        --array=1-${interval_count} \
+        "${SCRIPTS_DIR}/scripts/joint_calling_array.sh" \
+        "${TMP_JC_DIR}" \
+        "${BARCODES_MAP}" \
+        "${INTERVALS_FILE}" \
+        "${REFERENCE}" \
+        "${SCRIPTS_DIR}")
 
-# Submit h5ad compilation job (after joint calling completes)
+    echo "Joint calling array submitted: ${jc_array_ID}"
+    all_jc_jobs="${jc_array_ID}"
+else
+    # Split into multiple batches
+    echo "Interval count (${interval_count}) exceeds MAX_ARRAY_SIZE (${MAX_ARRAY_SIZE})"
+    echo "Splitting into multiple batches..."
+
+    all_jc_jobs=""
+    batch_num=0
+    for ((start=1; start<=${interval_count}; start+=${MAX_ARRAY_SIZE})); do
+        end=$((start + MAX_ARRAY_SIZE - 1))
+        if [ "${end}" -gt "${interval_count}" ]; then
+            end="${interval_count}"
+        fi
+
+        batch_num=$((batch_num + 1))
+        echo "  Batch ${batch_num}: intervals ${start}-${end}"
+
+        batch_jc_ID=$(sbatch --parsable \
+            --array=${start}-${end} \
+            "${SCRIPTS_DIR}/scripts/joint_calling_array.sh" \
+            "${TMP_JC_DIR}" \
+            "${BARCODES_MAP}" \
+            "${INTERVALS_FILE}" \
+            "${REFERENCE}" \
+            "${SCRIPTS_DIR}")
+
+        echo "    Submitted: ${batch_jc_ID}"
+
+        if [ -z "${all_jc_jobs}" ]; then
+            all_jc_jobs="${batch_jc_ID}"
+        else
+            all_jc_jobs="${all_jc_jobs}:${batch_jc_ID}"
+        fi
+    done
+
+    echo "All joint calling jobs: ${all_jc_jobs}"
+fi
+
+# Submit h5ad compilation job (after ALL joint calling batches complete)
 echo "Submitting h5ad compilation..."
 compile_ID=$(sbatch --parsable \
-    --dependency=afterok:${jc_array_ID} \
+    --dependency=afterok:${all_jc_jobs} \
     "${SCRIPTS_DIR}/scripts/compile_h5ad.sh" \
     "${TMP_JC_DIR}" \
     "${FINAL_H5AD}")

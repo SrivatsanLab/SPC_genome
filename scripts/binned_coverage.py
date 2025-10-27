@@ -50,7 +50,7 @@ cell_list_file = sys.argv[1]  # File with the list of cells
 working_dir = sys.argv[2]
 out_dir = sys.argv[3]
 
-human_chroms = get_chrom_lengths('hg38.chrom.sizes')
+human_chroms = get_chrom_lengths('bin/hg38.chrom.sizes')
 
 cells_df = pd.read_csv(cell_list_file, sep='\t', header=None)
 
