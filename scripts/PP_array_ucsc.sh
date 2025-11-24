@@ -14,7 +14,7 @@ set -euo pipefail
 
 # Activate conda environment for Python scripts (atrandi_demux.py)
 eval "$(micromamba shell hook --shell bash)"
-micromamba activate default_jupyter
+micromamba activate spc_genome
 
 mkdir -p SLURM_outs/array_outs
 

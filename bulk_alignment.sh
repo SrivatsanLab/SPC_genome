@@ -119,7 +119,7 @@ module load BWA SAMtools
 SAM_FILE="${TMP_DIR}/${OUTPUT_NAME}.sam"
 
 echo "Running BWA-MEM alignment..."
-bwa mem -t 8 -C -o "${SAM_FILE}" "${REFERENCE_GENOME}" "${TRIMMED_R1}" "${TRIMMED_R2}"
+bwa mem -t 8 -o "${SAM_FILE}" "${REFERENCE_GENOME}" "${TRIMMED_R1}" "${TRIMMED_R2}"
 
 # Delete trimmed fastqs to save space
 rm "${TRIMMED_R1}" "${TRIMMED_R2}"
