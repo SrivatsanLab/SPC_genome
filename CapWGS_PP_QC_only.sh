@@ -33,7 +33,7 @@ if [ -f "$CONFIG_FILE" ]; then
     SCRIPTS_DIR="."  # Project root directory (contains bin/, scripts/, barcodes/)
     OUTPUT_DIR="${CONFIG_output_base_dir:-.}"
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
-    TMP_DIR="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
+    TMP_DIR_BASE="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
     REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/reference/GATK/hg38}"
     READ1="${CONFIG_data_read1}"
     READ2="${CONFIG_data_read2}"
@@ -44,7 +44,7 @@ else
     SCRIPTS_DIR="."  # Project root directory
     OUTPUT_DIR="./data/K562_tree"
     N_CHUNKS=500
-    TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
+    TMP_DIR_BASE="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
     REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38"
 fi
 
@@ -99,6 +99,12 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     echo "Missing required arguments." >&2
     show_help
     exit 1
+fi
+
+# Create sample-specific TMP_DIR to avoid collisions when running multiple samples in parallel
+# Only use TMP_DIR_BASE if TMP_DIR was not explicitly set via -t flag
+if [ -z "$TMP_DIR" ]; then
+    TMP_DIR="${TMP_DIR_BASE}/${OUTPUT_NAME}"
 fi
 
 # Print inputs

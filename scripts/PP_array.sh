@@ -11,9 +11,9 @@ set -euo pipefail
 # This job performs custom de-multiplexing and standard bioinformatics (trimming, alignment) on chunks of paired fastq's #
 ##########################################################################################################################
 
-# Activate conda environment
+# Activate conda environment for Python scripts (atrandi_demux.py)
 eval "$(micromamba shell hook --shell bash)"
-micromamba activate spc_genome
+micromamba activate default_jupyter
 
 mkdir -p SLURM_outs/array_outs
 

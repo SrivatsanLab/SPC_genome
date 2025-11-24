@@ -12,9 +12,9 @@ set -euo pipefail
 # Modified version for UCSC hg38 reference genome                                                                        #
 ##########################################################################################################################
 
-# Activate conda environment
+# Activate conda environment for Python scripts (atrandi_demux.py)
 eval "$(micromamba shell hook --shell bash)"
-micromamba activate spc_genome
+micromamba activate default_jupyter
 
 mkdir -p SLURM_outs/array_outs
 
