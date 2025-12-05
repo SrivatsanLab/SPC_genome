@@ -50,14 +50,18 @@ cell_list_file = sys.argv[1]  # File with the list of cells
 working_dir = sys.argv[2]
 out_dir = sys.argv[3]
 
-human_chroms = get_chrom_lengths('bin/hg38.chrom.sizes')
-
 cells_df = pd.read_csv(cell_list_file, sep='\t', header=None)
 
 # Extract the BigWig file for this job based on task_id
 barcode = cells_df.iloc[task_id][0]
 
 bigwig_file = f'{working_dir}/{barcode}.bw'
+
+# Get chromosome lengths from the bigwig file itself to handle cases where
+# not all chromosomes in the reference are present in the bigwig
+bw_temp = pyBigWig.open(bigwig_file)
+human_chroms = bw_temp.chroms()
+bw_temp.close()
 
 bins = create_uniform_bins(human_chroms, 1000)
 coverage = map_coverage_to_bins(f"{bigwig_file}", bins)

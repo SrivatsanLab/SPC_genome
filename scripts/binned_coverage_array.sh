@@ -18,7 +18,7 @@ OUTPUT_DIR="$3"       # Output directory for CSV files
 
 # Activate conda environment
 eval "$(micromamba shell hook --shell bash)"
-micromamba activate /fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/envs/default_jupyter
+micromamba activate default_jupyter
 
 # Run binned coverage Python script
 # Note: The script expects 0-indexed task IDs internally
