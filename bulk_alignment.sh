@@ -24,8 +24,8 @@ This script aligns bulk samples without demultiplexing or variant calling.
 
 Required arguments:
   -o    <output_name>           Desired sample name (prefix for outputs)
-  -1    <read1.fastq.gz>        Read 1 FASTQ file
-  -2    <read2.fastq.gz>        Read 2 FASTQ file
+  -1    <read1.fastq.gz>        Read 1 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R1*.fastq.gz")
+  -2    <read2.fastq.gz>        Read 2 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R2*.fastq.gz")
   -g    <reference_genome>      Path to BWA index (e.g., /shared/biodata/reference/iGenomes/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa)
 
 Optional arguments:
@@ -93,15 +93,26 @@ echo "Step 1: Trimming adapters with Trim Galore..."
 
 module load cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
 
-trim_galore --paired --cores 4 -o "${TMP_DIR}" --illumina --gzip "${READ1}" "${READ2}"
+# For multi-lane support: concatenate all R1 and R2 files, then trim
+# Use process substitution to avoid creating large intermediate concatenated files
+CONCAT_R1="${TMP_DIR}/concatenated_R1.fastq.gz"
+CONCAT_R2="${TMP_DIR}/concatenated_R2.fastq.gz"
+
+echo "Concatenating input files..."
+# Note: READ1 and READ2 are intentionally unquoted to allow shell expansion for multi-lane patterns
+cat $READ1 > "${CONCAT_R1}"
+cat $READ2 > "${CONCAT_R2}"
+
+trim_galore --paired --cores 4 -o "${TMP_DIR}" --illumina --gzip "${CONCAT_R1}" "${CONCAT_R2}"
+
+# Delete concatenated files to save space
+rm "${CONCAT_R1}" "${CONCAT_R2}"
 
 module unload cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
 
 # Get trimmed file names
-BASENAME1=$(basename "${READ1}" .fastq.gz)
-BASENAME2=$(basename "${READ2}" .fastq.gz)
-TRIMMED_R1="${TMP_DIR}/${BASENAME1}_val_1.fq.gz"
-TRIMMED_R2="${TMP_DIR}/${BASENAME2}_val_2.fq.gz"
+TRIMMED_R1="${TMP_DIR}/concatenated_R1_val_1.fq.gz"
+TRIMMED_R2="${TMP_DIR}/concatenated_R2_val_2.fq.gz"
 
 echo "Trimmed files created:"
 echo "  R1: ${TRIMMED_R1}"
