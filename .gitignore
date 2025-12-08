@@ -1,7 +1,6 @@
 # Data directories
 data/
-../sc_PolE_novaseq/
-../bulk_PolE_*/
+bin/
 
 # Results and outputs
 results/
@@ -68,8 +67,5 @@ docs/summaries/
 # Logs
 *.log
 
-# Coverage and testing
-.coverage
-htmlcov/
-.pytest_cache/
-test/fixtures/outputs/
+# Extras
+notebooks/HSC_nextseq_pilot.ipynb
