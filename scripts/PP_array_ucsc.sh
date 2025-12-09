@@ -74,6 +74,9 @@ module load BWA
 if [ -f "${genome}" ]; then
     # If genome is a direct path to fasta file
     BWA_INDEX="${genome}"
+elif [ -f "${genome}/genome.fa" ]; then
+    # UCSC iGenomes structure where BWAIndex is already in path
+    BWA_INDEX="${genome}/genome.fa"
 elif [ -f "${genome}/BWAIndex/genome.fa" ]; then
     # UCSC iGenomes structure
     BWA_INDEX="${genome}/BWAIndex/genome.fa"
@@ -84,6 +87,7 @@ else
     echo "Error: Could not find BWA index at expected locations"
     echo "Tried:"
     echo "  ${genome}"
+    echo "  ${genome}/genome.fa"
     echo "  ${genome}/BWAIndex/genome.fa"
     echo "  ${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
     exit 1
