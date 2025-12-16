@@ -20,17 +20,17 @@ SCRIPTS_DIR="$5"
 
 ls $TMP_dir/*.sam > "${BIN_DIR}/sam_list.txt"
 
-SAM_FILE="${ALIGNED_DIR}/${OUTPUT_NAME}.sam"
 BAM_FILE="${ALIGNED_DIR}/${OUTPUT_NAME}.bam"
 
 module load SAMtools
 
-echo "Concatenating SAM Chunks"
+echo "Merging SAM chunks directly to sorted BAM..."
 
-samtools merge -@ 4 -o "${SAM_FILE}" -b "${BIN_DIR}/sam_list.txt"
+# Merge and sort in one streaming operation to avoid creating 4TB intermediate SAM file
+samtools merge -@ 4 -b "${BIN_DIR}/sam_list.txt" -O SAM - | samtools sort -@ 4 -o "${BAM_FILE}"
 
-echo "Converting SAM to sorted BAM and indexing..."
-samtools view -@ 4 -bS "${SAM_FILE}" | samtools sort -@ 4 -o "${BAM_FILE}" && samtools index -@ 4 "${BAM_FILE}"
+echo "Indexing BAM file..."
+samtools index -@ 4 "${BAM_FILE}"
 
 echo "Creating knee plot and detecting real cells..."
 

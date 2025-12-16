@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=bulk_alignment
 #SBATCH --output=SLURM_outs/%x_%j.out
-#SBATCH -c 8
-#SBATCH -t 4:00:00
+#SBATCH -c 16
+#SBATCH -t 5-00:00:00
 
 ######################################################################################################
 # Bulk sample alignment pipeline (no demultiplexing, no variant calling)
@@ -103,7 +103,7 @@ echo "Concatenating input files..."
 cat $READ1 > "${CONCAT_R1}"
 cat $READ2 > "${CONCAT_R2}"
 
-trim_galore --paired --cores 4 -o "${TMP_DIR}" --illumina --gzip "${CONCAT_R1}" "${CONCAT_R2}"
+trim_galore --paired --cores 8 -o "${TMP_DIR}" --illumina --gzip "${CONCAT_R1}" "${CONCAT_R2}"
 
 # Delete concatenated files to save space
 rm "${CONCAT_R1}" "${CONCAT_R2}"
@@ -130,7 +130,7 @@ module load BWA SAMtools
 SAM_FILE="${TMP_DIR}/${OUTPUT_NAME}.sam"
 
 echo "Running BWA-MEM alignment..."
-bwa mem -t 8 -o "${SAM_FILE}" "${REFERENCE_GENOME}" "${TRIMMED_R1}" "${TRIMMED_R2}"
+bwa mem -t 16 -o "${SAM_FILE}" "${REFERENCE_GENOME}" "${TRIMMED_R1}" "${TRIMMED_R2}"
 
 # Delete trimmed fastqs to save space
 rm "${TRIMMED_R1}" "${TRIMMED_R2}"
@@ -144,8 +144,8 @@ echo "Step 3: Converting to BAM, sorting, and indexing..."
 
 BAM_FILE="${OUTPUT_DIR}/${OUTPUT_NAME}.bam"
 
-samtools view -@ 8 -bS "${SAM_FILE}" | samtools sort -@ 8 -o "${BAM_FILE}"
-samtools index -@ 8 "${BAM_FILE}"
+samtools view -@ 16 -bS "${SAM_FILE}" | samtools sort -@ 16 -o "${BAM_FILE}"
+samtools index -@ 16 "${BAM_FILE}"
 
 # Delete SAM file
 rm "${SAM_FILE}"
