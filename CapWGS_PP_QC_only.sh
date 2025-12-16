@@ -60,8 +60,8 @@ Command-line arguments override config.yaml values.
 
 Required arguments:
   -o    <output_name>           Desired sample name (prefix for outputs)
-  -1    <read1.fastq.gz>        Read 1 FASTQ file
-  -2    <read2.fastq.gz>        Read 2 FASTQ file
+  -1    <read1.fastq.gz>        Read 1 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R1*.fastq.gz")
+  -2    <read2.fastq.gz>        Read 2 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R2*.fastq.gz")
   -g    <reference_genome>      Path to directory containing genome fasta, fasta index, and BWA index folder
   -r    <READ_COUNT>            Number of reads (from sequencing run info)
 
@@ -158,8 +158,9 @@ CHUNK_LINES=$(( CHUNK_LINES / 4 * 4 ))
 # Step 3: Split each FASTQ file into chunks based on respective chunk size
 # Limit to specified read count, then split into chunks
 # Use -d for numeric suffixes (00, 01, 02...) to avoid file extension collisions (e.g., 'gz')
-zcat "$READ1" | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
-zcat "$READ2" | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
+# Note: READ1 and READ2 are intentionally unquoted to allow shell expansion for multi-lane patterns
+zcat $READ1 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
+zcat $READ2 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
 wait
 
 ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${BIN_DIR}/chunk_indices.txt"
