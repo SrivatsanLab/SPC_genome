@@ -21,6 +21,10 @@ BINSIZE="${4:-1000}"  # Bin size for bigwig (default: 1000)
 # Get sample name from array task ID
 SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${SAMPLE_LIST}")
 
+# Convert to absolute paths
+BAM_DIR=$(readlink -f "${BAM_DIR}")
+OUTPUT_DIR=$(readlink -f "${OUTPUT_DIR}")
+
 # Input and output files
 BAM_FILE="${BAM_DIR}/${SAMPLE}.bam"
 BIGWIG_FILE="${OUTPUT_DIR}/${SAMPLE}.bw"

@@ -196,11 +196,23 @@ sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "$
 
 echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
 
+######################################################################################################
+#### Generate bigwig files and Lorenz curves for coverage QC
+
+# This job generates bigwig files and computes Lorenz curves for each single cell
+# SC BAMs are in TMP_DIR/sc_outputs/, but we'll output bigwigs and Lorenz curves to ALIGNED_DIR/sc_outputs/
+SC_OUTPUTS_DIR="${ALIGNED_DIR}/sc_outputs"
+mkdir -p "${SC_OUTPUTS_DIR}"
+
+bigwig_lorenz_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_job_ID "${SCRIPTS_DIR}/scripts/submit_bigwig_lorenz.sh" "${BIN_DIR}/real_cells.txt" "${TMP_DIR}/sc_outputs" "${SC_OUTPUTS_DIR}" 1000)
+
+echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
+
 echo ""
 echo "=========================================="
 echo "QC-only pipeline submitted successfully!"
 echo "=========================================="
-echo "Pipeline will complete after cell extraction."
+echo "Pipeline will complete after bigwig and Lorenz curve generation."
 echo "No variant calling will be performed."
 echo ""
 echo "Output locations:"
@@ -208,4 +220,5 @@ echo "  - Aligned BAM: ${ALIGNED_DIR}/${OUTPUT_NAME}.bam"
 echo "  - Knee plot: ${BIN_DIR}/kneeplot.png"
 echo "  - Real cells list: ${BIN_DIR}/real_cells.txt"
 echo "  - Read counts: ${BIN_DIR}/readcounts.csv"
+echo "  - SC bigwigs and Lorenz curves: ${SC_OUTPUTS_DIR}/"
 echo ""
