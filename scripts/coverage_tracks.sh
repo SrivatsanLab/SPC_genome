@@ -1,26 +1,61 @@
 #!/bin/bash
-mkdir -p coverage_tracks
-sbatch -p short coverage_tracks.py CAACTTGCAGGAAGATGGTCACTCTATGCGACAAGGGATGGTCTA human mMDA
-sbatch -p short coverage_tracks.py TACCACAGAGGATTGGTAGCACTCGTGTGATGAAGGCGACCTATA human mMDA
-sbatch -p short coverage_tracks.py CAACTTGCAGGAAAGGTGACACTCTACAACCGAAGGAGATACCGA human mMDA
-sbatch -p short coverage_tracks.py ACTAACCGAGGAAAGGTGACACTCCGAACTTGAAGGGATGGTCTA human mMDA
-sbatch -p short coverage_tracks.py CAACTTGCAGGATGGTCACTACTCTCCAGTCTAAGGCGGTTGATA human mMDA
-sbatch -p short coverage_tracks.py CAACCAACAGGAAGGCATTGACTCTCTGCTTGAAGGGGCATCAAA human mMDA
-sbatch -p short coverage_tracks.py CAACTTGCAGGAAGGCTAACACTCGTGTGATGAAGGGACAGCATA mouse mMDA
-sbatch -p short coverage_tracks.py ACTAACCGAGGAATGGTGTGACTCAGGTCGTAAAGGCGACCTATA mouse mMDA
-sbatch -p short coverage_tracks.py AGGTCCAAAGGATGGTCACTACTCAGCATTGGAAGGGATGGTCTA mouse mMDA
-sbatch -p short coverage_tracks.py GGTCTCATAGGATGGTCACTACTCAGAATGCCAAGGCGACCTATA mouse mMDA
-sbatch -p short coverage_tracks.py CAACTTGCAGGATTGGTAGCACTCGGAACTGTAAGGGATGGTCTA mouse mMDA
-sbatch -p short coverage_tracks.py GGTCTCATAGGAGATACCGAACTCTACAACCGAAGGCGACCTATA mouse mMDA
-sbatch -p short coverage_tracks.py AGGTCCAAAGGAAGACCGATACTCACAGTAGCAAGGGTCGGTAAA human PTA	
-sbatch -p short coverage_tracks.py GGTCTCATAGGAAGGCATTGACTCTGTTGGACAAGGTTGGATGCA human PTA	
-sbatch -p short coverage_tracks.py TACCACAGAGGATGGTCACTACTCAGGTCGTAAAGGGTCGGTAAA human PTA	
-sbatch -p short coverage_tracks.py ACTAACCGAGGAGATACCGAACTCTGCTATGGAAGGTTGATGGCA human PTA	
-sbatch -p short coverage_tracks.py GTGAGACTAGGAATGGTGTGACTCGCTGGATAAAGGGTCGGTAAA human PTA	
-sbatch -p short coverage_tracks.py CAACCAACAGGAAACTGCTCACTCTCTGGAACAAGGCATACCGTA human PTA	
-sbatch -p short coverage_tracks.py AGGTCCAAAGGATGGTCACTACTCTATGCGACAAGGGTCGGTAAA mouse PTA	
-sbatch -p short coverage_tracks.py TATCAGCCAGGAAGATGGTCACTCACAGTAGCAAGGGTTACGGTA mouse PTA	
-sbatch -p short coverage_tracks.py CAACCAACAGGAGATACCGAACTCACAGTAGCAAGGACATCGTCA mouse PTA	
-sbatch -p short coverage_tracks.py ACTAACCGAGGAAGGCATTGACTCTGCTATGGAAGGTTGGATGCA mouse PTA	
-sbatch -p short coverage_tracks.py GGTCTCATAGGATGGTCACTACTCTCTGCTTGAAGGACATCGTCA mouse PTA	
-sbatch -p short coverage_tracks.py TACCACAGAGGAAACGATGGACTCTATGCGACAAGGGTCGGTAAA mouse PTA	
+#SBATCH -J coverage_track
+#SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
+#SBATCH -c 1
+#SBATCH --mem=8G
+#SBATCH -t 2:00:00
+
+###########################################################################################################################
+# Generate coverage track plots from bigwig files
+# This is an array job wrapper for the coverage_tracks.py script
+#
+# Usage:
+#   sbatch --array=1-N scripts/coverage_tracks.sh <barcode_file> <bigwig_dir> <output_dir> [options]
+#
+# Arguments:
+#   barcode_file: File containing sample names/barcodes (one per line)
+#   bigwig_dir: Directory containing bigwig files
+#   output_dir: Directory for output plots
+#   options: Additional options to pass to coverage_tracks.py
+#
+# Examples of options:
+#   --color '#ff1a5e'                    # Custom color
+#   --dark-mode                           # Use dark mode
+#   -c chr1                               # Plot only chr1
+#   --linewidth 1.5                       # Thicker lines
+#   --no-log-scale                        # Linear scale
+#   --ylim 0 50                           # Custom y-axis limits
+#   --gap-size 5000000                    # Smaller gaps between contigs
+#   --no-contig-labels                    # Hide contig labels
+#   --width 20 --height 3                 # Larger figure
+###########################################################################################################################
+
+set -euo pipefail
+
+BARCODE_FILE="$1"
+BIGWIG_DIR="$2"
+OUTPUT_DIR="$3"
+shift 3  # Remove first 3 arguments, rest are options
+
+# Get barcode for this array task
+BARCODE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$BARCODE_FILE")
+
+# Define input and output paths
+BIGWIG_FILE="${BIGWIG_DIR}/${BARCODE}.bw"
+OUTPUT_FILE="${OUTPUT_DIR}/${BARCODE}_coverage_track.png"
+
+# Create output directory
+mkdir -p "${OUTPUT_DIR}"
+
+# Activate Python environment
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate default_jupyter
+
+echo "Generating coverage track for: ${BARCODE}"
+echo "Input: ${BIGWIG_FILE}"
+echo "Output: ${OUTPUT_FILE}"
+
+# Run coverage_tracks.py with provided options
+python scripts/coverage_tracks.py "${BIGWIG_FILE}" -o "${OUTPUT_FILE}" "$@"
+
+echo "Complete!"
