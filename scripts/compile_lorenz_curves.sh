@@ -49,16 +49,16 @@ for filepath in lorenz_files:
     barcode = os.path.basename(filepath).replace('_lorenz.csv', '')
     df = pd.read_csv(filepath)
 
-    # Assuming columns are 'x' and 'lorenz_y'
-    if 'x' in df.columns and 'lorenz_y' in df.columns:
-        dfs[barcode] = df.set_index('x')['lorenz_y']
+    # Use the correct column names from lorenz.py output
+    if 'cumulative_fraction_genome' in df.columns and 'cumulative_fraction_reads' in df.columns:
+        dfs[barcode] = df.set_index('cumulative_fraction_genome')['cumulative_fraction_reads']
     else:
         print(f"WARNING: Unexpected column names in {filepath}: {df.columns.tolist()}")
 
 # Combine into single dataframe
 if dfs:
     combined_df = pd.DataFrame(dfs)
-    combined_df.index.name = 'x'
+    combined_df.index.name = 'cumulative_fraction_genome'
     combined_df.to_csv(output_file)
     print(f"Successfully compiled {len(dfs)} Lorenz curves to {output_file}")
     print(f"Output shape: {combined_df.shape}")
