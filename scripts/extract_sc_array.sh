@@ -27,3 +27,6 @@ output_bam="${sc_output_dir}/${barcode}.bam"
 # samtools view -h -b -d CB:${barcode} "${input_file}" > "${output_bam}"
 
 samtools view -h ${input_file} | grep -E "^@|CB:Z:${barcode}" | samtools view -b -o "${output_bam}"
+
+# Index the BAM file
+samtools index "${output_bam}"
