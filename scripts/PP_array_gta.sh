@@ -224,14 +224,21 @@ if [ "$rna_count" -eq 0 ]; then
 else
     echo "Aligning ${rna_count} RNA candidate read pairs with STAR..."
 
-    # Load STAR 2.7.1a - compatible with versionGenome 20201 format
-    module load STAR/2.7.1a-foss-2019b
+    # Load STAR 2.7.9a
+    module load STAR/2.7.9a-GCC-11.2.0
 
     # Construct STAR index path
-    if [ -d "${genome}/STARIndex" ]; then
+    # First check for custom-built index in project directory
+    if [ -d "./data/reference/WBcel235_STAR279a" ]; then
+        STAR_INDEX="./data/reference/WBcel235_STAR279a"
+        echo "Using custom STAR index: ${STAR_INDEX}"
+    elif [ -d "${genome}/STARIndex" ]; then
         STAR_INDEX="${genome}/STARIndex"
+        echo "Using system STAR index: ${STAR_INDEX}"
     else
-        echo "Error: Could not find STAR index at: ${genome}/STARIndex"
+        echo "Error: Could not find STAR index"
+        echo "Tried: ./data/reference/WBcel235_STAR279a"
+        echo "Tried: ${genome}/STARIndex"
         exit 1
     fi
 
