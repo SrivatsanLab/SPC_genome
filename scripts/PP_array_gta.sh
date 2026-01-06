@@ -224,9 +224,8 @@ if [ "$rna_count" -eq 0 ]; then
 else
     echo "Aligning ${rna_count} RNA candidate read pairs with STAR..."
 
-    # Load specific STAR version (2.7.6a) - index was built with 2.7.4a
-    # Note: May need to rebuild index if version incompatibility persists
-    module load STAR/2.7.6a-GCC-10.2.0
+    # Load STAR 2.7.1a - compatible with versionGenome 20201 format
+    module load STAR/2.7.1a-foss-2019b
 
     # Construct STAR index path
     if [ -d "${genome}/STARIndex" ]; then
