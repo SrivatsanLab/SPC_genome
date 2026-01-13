@@ -24,9 +24,9 @@ rna_sam="${TMP_dir}/${chunk}_rna.sam"
 sc_output_dir="${TMP_dir}/sc_outputs"
 mkdir -p "${sc_output_dir}"
 
-# Output files
-dna_bam="${sc_output_dir}/${barcode}_dna.bam"
-rna_bam="${sc_output_dir}/${barcode}_rna.bam"
+# Output files - include chunk ID to avoid overwriting
+dna_bam="${sc_output_dir}/${barcode}_${chunk}_dna.bam"
+rna_bam="${sc_output_dir}/${barcode}_${chunk}_rna.bam"
 
 # Extract DNA reads for this barcode
 if [ -f "${dna_sam}" ]; then

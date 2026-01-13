@@ -160,11 +160,12 @@ ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${BIN_DIR}/chunk_indices.txt
 chunk_count=$(wc -l < "${BIN_DIR}/chunk_indices.txt")
 
 ######################################################################################################
-#### Submit dual-alignment array job (BWA + STAR)
+#### Submit STAR-only alignment array job
+#### Aligns all reads with STAR, then splits by splice junctions
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array_gta.sh" "${BIN_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array_gta_star_only.sh" "${BIN_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
 
-echo "Dual-alignment preprocessing array job ID: ${PP_array_ID}"
+echo "STAR-only alignment preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate DNA and RNA SAM files, create BAMs, and detect real cells
