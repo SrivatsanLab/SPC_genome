@@ -55,7 +55,7 @@ bcftools mpileup \
 bcftools call \
     --threads 8 \
     -m \
-    -v \
+    -A \
     -O z \
     -o "${TMP_VCF}"
 

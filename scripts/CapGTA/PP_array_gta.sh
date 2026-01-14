@@ -10,9 +10,11 @@ set -euo pipefail
 
 ##########################################################################################################################
 # This job performs dual-alignment for genome-transcriptome coassay data:                                               #
-# 1. BWA-MEM alignment for DNA reads                                                                                    #
-# 2. STAR alignment for RNA reads (splice-aware)                                                                        #
-# Reads are classified based on BWA alignment quality (MAPQ and soft-clipping)                                          #
+# 1. BWA-MEM alignment for all reads                                                                                    #
+# 2. Classify high-quality alignments (MAPQ>=20, soft-clip<10bp) as DNA                                                #
+# 3. STAR alignment for remaining reads (RNA candidates)                                                               #
+# 4. Filter STAR output - keep only reads with splice junctions OR poly-T sequences as RNA                             #
+# 5. Reads without RNA features are moved back to DNA BAM                                                              #
 ##########################################################################################################################
 
 # Activate conda environment for Python scripts (atrandi_demux.py)
@@ -259,14 +261,21 @@ else
 
     STAR_SAM="${TMP_DIR}/${chunk}_rna_Aligned.out.sam"
 
-    # Add CB tags to STAR output using the lookup table
-    echo "Adding CB tags to STAR alignments..."
+    # Add CB tags and filter for RNA-specific reads (splice junctions or poly-T)
+    echo "Adding CB tags and filtering for RNA-specific reads..."
     module load SAMtools
 
     # Extract header
     samtools view -H "${STAR_SAM}" > "${RNA_SAM}"
 
-    # Add CB tags to alignments by matching read names
+    # Temporary file for reads that don't meet RNA criteria
+    RNA_REJECTS="${TMP_DIR}/${chunk}_rna_rejects.sam"
+    touch "${RNA_REJECTS}"
+
+    # Add CB tags and filter for splice junctions or poly-T
+    # RNA reads must have either:
+    # 1. Splice junction (N in CIGAR string), OR
+    # 2. Poly-T sequence (10+ consecutive T's or A's)
     samtools view "${STAR_SAM}" | awk '
     BEGIN {
         # Load CB tag lookup table
@@ -276,18 +285,48 @@ else
         }
         close(cb_map_file)
         rna_sam = "'"${RNA_SAM}"'"
+        rna_rejects = "'"${RNA_REJECTS}"'"
     }
     {
         read_name = $1
+        flag = $2
+        cigar = $6
+        seq = $10
+
+        # Check for splice junction (N in CIGAR)
+        has_splice = (cigar ~ /N/)
+
+        # Check for poly-T (10+ consecutive T or A)
+        has_polyT = 0
+        if (seq ~ /TTTTTTTTTT/ || seq ~ /AAAAAAAAAA/) {
+            has_polyT = 1
+        }
+
+        # Determine if this is a true RNA read
+        is_rna = (has_splice || has_polyT)
+
+        # Append CB tag if available
+        cb_tag = ""
         if (read_name in cb_tags) {
-            # Append CB tag to the line
-            print $0 "\t" cb_tags[read_name] >> rna_sam
+            cb_tag = "\t" cb_tags[read_name]
+        }
+
+        # Output to appropriate file
+        if (is_rna) {
+            print $0 cb_tag >> rna_sam
         } else {
-            # No CB tag found (shouldn'"'"'t happen, but handle gracefully)
-            print $0 >> rna_sam
+            print $0 cb_tag >> rna_rejects
         }
     }
     '
+
+    # Move rejected RNA candidates back to DNA SAM
+    if [ -s "${RNA_REJECTS}" ]; then
+        rejected_count=$(wc -l < "${RNA_REJECTS}")
+        echo "Moving ${rejected_count} reads without splice junctions or poly-T back to DNA SAM..."
+        cat "${RNA_REJECTS}" >> "${DNA_SAM}"
+    fi
+    rm "${RNA_REJECTS}"
 
     module unload SAMtools
 

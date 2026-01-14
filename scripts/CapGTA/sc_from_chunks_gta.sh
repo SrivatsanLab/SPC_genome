@@ -4,12 +4,16 @@
 
 ##########################################################################################################################
 # This job extracts DNA and RNA reads from single cells from each chunk, then compiles into single cell BAMs            #
+# Then performs variant calling, RNA counting, and AnnData generation                                                   #
 ##########################################################################################################################
 
 chunk_indices="$1"
 TMP_dir="$2"
 barcode_file="$3"
 scripts_DIR="$4"
+SC_OUTPUTS_DIR="$5"
+RESULTS_DIR="$6"
+OUTPUT_NAME="$7"
 
 # Create an empty string to store job IDs
 job_ids=""
@@ -47,7 +51,7 @@ while IFS= read -r chunk; do
 
     # Submit an array job for processing all barcodes in this chunk
     # This will extract both DNA and RNA reads for each barcode
-    array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scripts/extract_sc_array_gta.sh" "$chunk" "$TMP_dir" "$barcode_file")
+    array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scripts/CapGTA/extract_sc_array_gta.sh" "$chunk" "$TMP_dir" "$barcode_file")
 
     # Add the array job ID to the list of job IDs
     job_ids="$job_ids$array_ID,"
@@ -67,11 +71,12 @@ echo "All chunk extraction jobs completed."
 echo ""
 echo "Merging per-chunk BAMs into final per-cell BAMs..."
 
-# Merge the chunked BAMs into final single-cell BAMs
+# Merge the chunked BAMs into final single-cell BAMs and copy to sc_outputs directory
 FINAL_SC_OUTPUT="${TMP_dir}/sc_outputs_final"
 mkdir -p "${FINAL_SC_OUTPUT}"
+mkdir -p "${SC_OUTPUTS_DIR}"
 
-merge_job_id=$(sbatch --parsable --dependency=afterok:$job_ids "${scripts_DIR}/scripts/merge_sc_chunks_gta.sh" \
+merge_job_id=$(sbatch --parsable --dependency=afterok:$job_ids "${scripts_DIR}/scripts/CapGTA/merge_sc_chunks_gta.sh" \
     "$barcode_file" \
     "${TMP_dir}/sc_outputs" \
     "${FINAL_SC_OUTPUT}")
@@ -80,21 +85,55 @@ echo "Merge job submitted (ID: ${merge_job_id}). Final BAMs will be in: ${FINAL_
 echo ""
 
 # Copy BAMs to final data directory
-DATA_OUTPUT="${scripts_DIR}/data/PolE_worm_pilot/sc_outputs"
-mkdir -p "${DATA_OUTPUT}"
+copy_job_id=$(sbatch --parsable --dependency=afterok:${merge_job_id} --wrap="cp -v ${FINAL_SC_OUTPUT}/*.bam ${SC_OUTPUTS_DIR}/" -J copy_sc_bams -o SLURM_outs/copy_sc_bams_%j.out)
 
-copy_job_id=$(sbatch --parsable --dependency=afterok:${merge_job_id} --wrap="cp -v ${FINAL_SC_OUTPUT}/*.bam ${DATA_OUTPUT}/" -J copy_sc_bams -o SLURM_outs/copy_sc_bams_%j.out)
-
-echo "Copy job submitted (ID: ${copy_job_id}). BAMs will be copied to: ${DATA_OUTPUT}"
+echo "Copy job submitted (ID: ${copy_job_id}). BAMs will be copied to: ${SC_OUTPUTS_DIR}"
 echo ""
 
 # Submit count matrix job
 GTF="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf"
-COUNT_OUTPUT="${scripts_DIR}/results/PolE_worm_pilot"
 
-count_job_id=$(sbatch --parsable --dependency=afterok:${copy_job_id} "${scripts_DIR}/scripts/create_rna_count_matrix.sh" \
-    "${DATA_OUTPUT}" \
+count_job_id=$(sbatch --parsable --dependency=afterok:${copy_job_id} "${scripts_DIR}/scripts/CapGTA/create_rna_count_matrix.sh" \
+    "${SC_OUTPUTS_DIR}" \
     "${GTF}" \
-    "${COUNT_OUTPUT}/rna_counts")
+    "${RESULTS_DIR}/rna_counts")
 
-echo "Count matrix job submitted (ID: ${count_job_id}). Results will be in: ${COUNT_OUTPUT}/rna_counts"
+echo "Count matrix job submitted (ID: ${count_job_id}). Results will be in: ${RESULTS_DIR}/rna_counts"
+echo ""
+
+# Submit single-cell variant calling (BCFtools)
+REFERENCE_FA="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa"
+
+vcall_job_id=$(sbatch --parsable --dependency=afterok:${copy_job_id} --array=1-${cell_count} "${scripts_DIR}/scripts/CapGTA/sc_variant_calling_bcftools_array.sh" \
+    "${barcode_file}" \
+    "${SC_OUTPUTS_DIR}" \
+    "${REFERENCE_FA}" \
+    "${SC_OUTPUTS_DIR}")
+
+echo "Single-cell variant calling job submitted (ID: ${vcall_job_id}). VCFs will be in: ${SC_OUTPUTS_DIR}"
+echo ""
+
+# Merge single-cell VCFs
+MERGED_VCF="${RESULTS_DIR}/sc_variants_merged.vcf.gz"
+
+merge_vcf_job_id=$(sbatch --parsable --dependency=afterok:${vcall_job_id} "${scripts_DIR}/scripts/CapGTA/merge_sc_vcfs.sh" \
+    "${SC_OUTPUTS_DIR}" \
+    "${MERGED_VCF}")
+
+echo "VCF merge job submitted (ID: ${merge_vcf_job_id}). Merged VCF will be: ${MERGED_VCF}"
+echo ""
+
+# Create AnnData objects (depends on both count matrix and merged VCF)
+RNA_MATRIX="${RESULTS_DIR}/rna_counts_matrix.csv"
+
+anndata_job_id=$(sbatch --parsable --dependency=afterok:${count_job_id}:${merge_vcf_job_id} "${scripts_DIR}/scripts/CapGTA/create_anndata_objects.sh" \
+    "${MERGED_VCF}" \
+    "${RNA_MATRIX}" \
+    "${RESULTS_DIR}" \
+    "${scripts_DIR}")
+
+echo "AnnData creation job submitted (ID: ${anndata_job_id}). H5AD files will be in: ${RESULTS_DIR}"
+echo ""
+echo "================================"
+echo "Pipeline submission complete!"
+echo "================================"
