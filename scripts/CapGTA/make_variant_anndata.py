@@ -20,8 +20,13 @@ vcf = VCF(vcf_file)
 # First: load all variants into a list
 variants_list = list(vcf)
 
-# Extract variant names from that
-variants = [f"{v.CHROM}-{v.start}-{v.REF}>{v.ALT[0]}" for v in variants_list]
+# Extract variant names from that (handle reference-only calls where ALT is empty)
+variants = []
+for v in variants_list:
+    if len(v.ALT) > 0 and v.ALT[0] is not None:
+        variants.append(f"{v.CHROM}-{v.start}-{v.REF}>{v.ALT[0]}")
+    else:
+        variants.append(f"{v.CHROM}-{v.start}-{v.REF}>.")
 variants = np.array(variants)
 
 cells = np.array(vcf.samples)

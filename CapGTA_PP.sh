@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=Preprocessing_QC_only
+#SBATCH --job-name=GTA_Preprocessing
 #SBATCH --output=SLURM_outs/%x_%j.out
 #SBATCH -c 2
 
@@ -33,7 +33,7 @@ if [ -f "$CONFIG_FILE" ]; then
     SCRIPTS_DIR="."  # Project root directory
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
     TMP_DIR_BASE="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
-    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/reference/GATK/hg38}"
+    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence}"
     READ1="${CONFIG_data_read1}"
     READ2="${CONFIG_data_read2}"
     READ_COUNT="${CONFIG_data_read_count}"
@@ -43,22 +43,23 @@ else
     SCRIPTS_DIR="."  # Project root directory
     N_CHUNKS=500
     TMP_DIR_BASE="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
-    REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38"
+    REFERENCE_GENOME="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence"
 fi
 
 # Function to display help message
 show_help() {
     cat << EOF
-Usage: $0 -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome.fa> -r <read_count>
+Usage: $0 -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome> -r <read_count>
 
-This script runs CapWGS QC-only pipeline: alignment, cell detection, bigwig/Lorenz generation (no variant calling).
+This script processes genome-transcriptome coassay (CapGTA) data, separating DNA and RNA reads.
+Includes alignment, cell detection, single-cell extraction, variant calling, and AnnData generation.
 Uses defaults from config.yaml if present. Command-line arguments override config.yaml values.
 
 Required arguments:
   -o    <output_name>           Sample name (creates data/{sample}/ and results/{sample}/)
   -1    <read1.fastq.gz>        Read 1 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R1*.fastq.gz")
   -2    <read2.fastq.gz>        Read 2 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R2*.fastq.gz")
-  -g    <reference_genome>      Path to directory containing genome fasta, fasta index, and BWA index folder
+  -g    <reference_genome>      Path to directory containing genome sequence and indices (BWAIndex, STARIndex)
   -r    <READ_COUNT>            Number of reads (from sequencing run info)
 
 Optional arguments:
@@ -68,9 +69,9 @@ Optional arguments:
   -h                            Show this help message and exit
 
 Directory structure created:
-  - data/{sample}/                 Bulk alignments
-  - data/{sample}/sc_outputs/      Single-cell BAMs, bigwigs, and Lorenz curves
-  - results/{sample}/              QC metrics (kneeplot, readcounts, etc.)
+  - data/{sample}/                 Bulk DNA and RNA alignments
+  - data/{sample}/sc_outputs/      Single-cell DNA/RNA BAMs and VCFs
+  - results/{sample}/              Final AnnData objects, QC metrics, RNA count matrices
   - {TMP_DIR}/{sample}/            Temporary chunks (deleted after completion)
 
 Note: Values are applied in this order: hardcoded defaults < config.yaml < command-line arguments
@@ -115,7 +116,7 @@ mkdir -p "${TMP_DIR}"
 
 # Print inputs
 echo "=========================================="
-echo "CapWGS QC-Only Pipeline Configuration"
+echo "CapGTA Pipeline Configuration"
 echo "=========================================="
 echo "Sample Name: ${OUTPUT_NAME}"
 echo "Read 1: ${READ1}"
@@ -158,53 +159,59 @@ ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${RESULTS_DIR}/chunk_indices
 chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
 
 ######################################################################################################
-#### Submit First Job array
+#### Submit STAR-only alignment array job
+#### Aligns all reads with STAR, then splits by splice junctions
 
-# Use PP_array_ucsc.sh for UCSC references, PP_array.sh for GATK references
-if [[ "${REFERENCE_GENOME}" == *"UCSC"* ]] || [[ "${REFERENCE_GENOME}" == *"iGenomes"* ]]; then
-    PP_SCRIPT="${SCRIPTS_DIR}/scripts/CapWGS_QC/PP_array_ucsc.sh"
-else
-    PP_SCRIPT="${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh"
-fi
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
-
-echo "Preprocessing array job ID: ${PP_array_ID}"
+echo "STAR-only alignment preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
-#### Concatenate SAM files, create BAM, and detect real cells
+#### Concatenate DNA and RNA SAM files, create BAMs, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapGTA/concatenate_gta.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Extract single cells for QC
+#### Extract single cells, call variants, create count matrices and AnnData objects
 
-# This job extracts reads for each detected cell from the chunked SAM files and outputs to sc_outputs/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+# This job extracts reads for each detected cell from the chunked SAM files, calls variants, and creates AnnData
+# Outputs SC BAMs and VCFs to data/{sample}/sc_outputs/, final results to results/{sample}/
+sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_chunks_gta.sh" \
+    "${RESULTS_DIR}/chunk_indices.txt" \
+    "${TMP_DIR}" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${SCRIPTS_DIR}" \
+    "${SC_OUTPUTS_DIR}" \
+    "${RESULTS_DIR}" \
+    "${OUTPUT_NAME}")
 
-echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
+echo "Single cell extraction, variant calling, and AnnData generation job ID: ${sc_from_chunks_job_ID}"
 
 ######################################################################################################
-#### Generate bigwig files and Lorenz curves for coverage QC
-
-# This job generates bigwig files and computes Lorenz curves for each single cell
-bigwig_lorenz_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_job_ID "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SC_OUTPUTS_DIR}" 1000)
-
-echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
+#### Pipeline completion
 
 echo ""
 echo "=========================================="
-echo "QC-only pipeline submitted successfully!"
+echo "CapGTA pipeline submitted successfully!"
 echo "=========================================="
-echo "Pipeline will complete after bigwig and Lorenz curve generation."
-echo "No variant calling will be performed."
+echo "Pipeline will:"
+echo "  1. Demultiplex and trim reads"
+echo "  2. Align all reads with STAR (separates DNA and RNA by splice junctions)"
+echo "  3. Detect real cells using combined DNA+RNA counts"
+echo "  4. Extract per-cell DNA and RNA BAMs"
+echo "  5. Call variants on DNA BAMs with BCFtools"
+echo "  6. Generate RNA count matrix from RNA BAMs"
+echo "  7. Create variant and RNA AnnData objects"
 echo ""
 echo "Output locations:"
-echo "  - Bulk BAM: ${DATA_DIR}/${OUTPUT_NAME}.bam"
+echo "  - Bulk DNA BAM: ${DATA_DIR}/${OUTPUT_NAME}_dna.bam"
+echo "  - Bulk RNA BAM: ${DATA_DIR}/${OUTPUT_NAME}_rna.bam"
 echo "  - Knee plot: ${RESULTS_DIR}/kneeplot.png"
 echo "  - Real cells list: ${RESULTS_DIR}/real_cells.txt"
 echo "  - Read counts: ${RESULTS_DIR}/readcounts.csv"
-echo "  - SC BAMs, bigwigs, Lorenz curves: ${SC_OUTPUTS_DIR}/"
+echo "  - SC BAMs and VCFs: ${SC_OUTPUTS_DIR}/"
+echo "  - RNA count matrix: ${RESULTS_DIR}/rna_counts_matrix.csv"
+echo "  - AnnData objects: ${RESULTS_DIR}/variants.h5ad, ${RESULTS_DIR}/rna_counts.h5ad"
 echo ""
