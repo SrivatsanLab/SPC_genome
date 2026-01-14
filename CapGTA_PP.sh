@@ -30,11 +30,10 @@ if [ -f "$CONFIG_FILE" ]; then
     eval $(parse_yaml "$CONFIG_FILE" "CONFIG_")
 
     # Set defaults from config
-    SCRIPTS_DIR="."  # Project root directory (contains bin/, scripts/, barcodes/)
-    OUTPUT_DIR="${CONFIG_output_base_dir:-.}"
+    SCRIPTS_DIR="."  # Project root directory
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
-    TMP_DIR="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
-    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/reference/iGenomes/Caenorhabditis_elegans/UCSC/ce10/Sequence}"
+    TMP_DIR_BASE="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
+    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence}"
     READ1="${CONFIG_data_read1}"
     READ2="${CONFIG_data_read2}"
     READ_COUNT="${CONFIG_data_read_count}"
@@ -42,13 +41,10 @@ if [ -f "$CONFIG_FILE" ]; then
 else
     # Hardcoded defaults if config.yaml doesn't exist
     SCRIPTS_DIR="."  # Project root directory
-    OUTPUT_DIR="./data/PolE_worm_pilot"
     N_CHUNKS=500
-    TMP_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
-    REFERENCE_GENOME="/shared/biodata/reference/iGenomes/Caenorhabditis_elegans/UCSC/ce10/Sequence"
+    TMP_DIR_BASE="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
+    REFERENCE_GENOME="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence"
 fi
-
-mkdir -p "${OUTPUT_DIR}"
 
 # Function to display help message
 show_help() {
@@ -56,10 +52,11 @@ show_help() {
 Usage: $0 -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome> -r <read_count>
 
 This script processes genome-transcriptome coassay (CapGTA) data, separating DNA and RNA reads.
+Includes alignment, cell detection, single-cell extraction, variant calling, and AnnData generation.
 Uses defaults from config.yaml if present. Command-line arguments override config.yaml values.
 
 Required arguments:
-  -o    <output_name>           Desired sample name (prefix for outputs)
+  -o    <output_name>           Sample name (creates data/{sample}/ and results/{sample}/)
   -1    <read1.fastq.gz>        Read 1 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R1*.fastq.gz")
   -2    <read2.fastq.gz>        Read 2 FASTQ file(s) - can be single file or quoted pattern (e.g., "lane*_R2*.fastq.gz")
   -g    <reference_genome>      Path to directory containing genome sequence and indices (BWAIndex, STARIndex)
@@ -67,17 +64,22 @@ Required arguments:
 
 Optional arguments:
   -s    <scripts_DIR>           Path to the SPC_genome directory (default: from config.yaml or .)
-  -O    <output_dir>            Desired output directory (default: from config.yaml or ./data/PolE_worm_pilot)
   -n    <N_CHUNKS>              Number of subjobs for SLURM arrays (default: from config.yaml or 500)
-  -t    <TMP_DIR>               Temp directory for fastq chunks (default: from config.yaml or /hpc/temp/srivatsan_s/SPC_genome_preprocessing)
+  -t    <TMP_DIR>               Temp directory for fastq chunks (default: from config.yaml or /hpc/temp/srivatsan_s/SPC_genome_preprocessing/{sample}/)
   -h                            Show this help message and exit
+
+Directory structure created:
+  - data/{sample}/                 Bulk DNA and RNA alignments
+  - data/{sample}/sc_outputs/      Single-cell DNA/RNA BAMs and VCFs
+  - results/{sample}/              Final AnnData objects, QC metrics, RNA count matrices
+  - {TMP_DIR}/{sample}/            Temporary chunks (deleted after completion)
 
 Note: Values are applied in this order: hardcoded defaults < config.yaml < command-line arguments
 EOF
 }
 
 # Parse command-line options (these override config.yaml values)
-while getopts ":o:1:2:g:r:s:O:n:t:h" option; do
+while getopts ":o:1:2:g:r:s:n:t:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
@@ -85,9 +87,8 @@ while getopts ":o:1:2:g:r:s:O:n:t:h" option; do
     g) REFERENCE_GENOME=$OPTARG ;;
 	r) READ_COUNT=$OPTARG ;;
     s) SCRIPTS_DIR=$OPTARG ;;
-	O) OUTPUT_DIR=$OPTARG ;;
 	n) N_CHUNKS=$OPTARG ;;
-	t) TMP_DIR=$OPTARG ;;
+	t) TMP_DIR_BASE=$OPTARG ;;
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
     :) echo "Option -$OPTARG requires an argument." >&2; show_help; exit 1 ;;
@@ -101,37 +102,35 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     exit 1
 fi
 
-# Create sample-specific TMP_DIR to avoid collisions when running multiple samples in parallel
-# Save the base TMP_DIR first
-TMP_DIR_BASE="${TMP_DIR}"
+# Set up sample-specific directory structure
+DATA_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}"
+SC_OUTPUTS_DIR="${DATA_DIR}/sc_outputs"
+RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
 TMP_DIR="${TMP_DIR_BASE}/${OUTPUT_NAME}"
 
+# Create necessary directories
+mkdir -p "${DATA_DIR}"
+mkdir -p "${SC_OUTPUTS_DIR}"
+mkdir -p "${RESULTS_DIR}"
+mkdir -p "${TMP_DIR}"
+
 # Print inputs
-echo "Processing $READ_COUNT reads for genome-transcriptome coassay with input parameters:"
+echo "=========================================="
+echo "CapGTA Pipeline Configuration"
+echo "=========================================="
 echo "Sample Name: ${OUTPUT_NAME}"
 echo "Read 1: ${READ1}"
 echo "Read 2: ${READ2}"
+echo "Read Count: ${READ_COUNT}"
 echo "Reference Genome: ${REFERENCE_GENOME}"
-
+echo ""
 echo "Scripts Directory: ${SCRIPTS_DIR}"
-echo "Output Directory: ${OUTPUT_DIR}"
-echo "Temp Directory: ${TMP_DIR}"
-
-# Create necessary directories
-mkdir -p "${OUTPUT_DIR}"
-mkdir -p "${TMP_DIR}"
-
-# Set up directory structure
-BIN_DIR="${SCRIPTS_DIR}/bin/${OUTPUT_NAME}"
-ALIGNED_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}/aligned"
-RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
-
-mkdir -p "${BIN_DIR}"
-mkdir -p "${ALIGNED_DIR}"
-mkdir -p "${RESULTS_DIR}"
-echo "Bin Directory: ${BIN_DIR}"
-echo "Aligned Data Directory: ${ALIGNED_DIR}"
+echo "Data Directory: ${DATA_DIR}"
+echo "Single Cell Outputs: ${SC_OUTPUTS_DIR}"
 echo "Results Directory: ${RESULTS_DIR}"
+echo "Temp Directory: ${TMP_DIR}"
+echo "Number of Chunks: ${N_CHUNKS}"
+echo "=========================================="
 
 ######################################################################################################
 #### chunk the fastqs
@@ -155,32 +154,40 @@ zcat $READ1 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read1_
 zcat $READ2 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
 wait
 
-ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${BIN_DIR}/chunk_indices.txt"
+ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${RESULTS_DIR}/chunk_indices.txt"
 
-chunk_count=$(wc -l < "${BIN_DIR}/chunk_indices.txt")
+chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
 
 ######################################################################################################
 #### Submit STAR-only alignment array job
 #### Aligns all reads with STAR, then splits by splice junctions
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/PP_array_gta_star_only.sh" "${BIN_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
 
 echo "STAR-only alignment preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate DNA and RNA SAM files, create BAMs, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/concatenate_gta.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${ALIGNED_DIR}" "${BIN_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapGTA/concatenate_gta.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Extract single cells (DNA and RNA BAMs separately)
+#### Extract single cells, call variants, create count matrices and AnnData objects
 
-# This job extracts reads for each detected cell from the chunked SAM files
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/sc_from_chunks_gta.sh" "${BIN_DIR}/chunk_indices.txt" "${TMP_DIR}" "${BIN_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+# This job extracts reads for each detected cell from the chunked SAM files, calls variants, and creates AnnData
+# Outputs SC BAMs and VCFs to data/{sample}/sc_outputs/, final results to results/{sample}/
+sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_chunks_gta.sh" \
+    "${RESULTS_DIR}/chunk_indices.txt" \
+    "${TMP_DIR}" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${SCRIPTS_DIR}" \
+    "${SC_OUTPUTS_DIR}" \
+    "${RESULTS_DIR}" \
+    "${OUTPUT_NAME}")
 
-echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
+echo "Single cell extraction, variant calling, and AnnData generation job ID: ${sc_from_chunks_job_ID}"
 
 ######################################################################################################
 #### Pipeline completion
@@ -191,16 +198,20 @@ echo "CapGTA pipeline submitted successfully!"
 echo "=========================================="
 echo "Pipeline will:"
 echo "  1. Demultiplex and trim reads"
-echo "  2. Align DNA reads with BWA-MEM"
-echo "  3. Align RNA reads with STAR"
-echo "  4. Detect real cells using combined DNA+RNA counts"
-echo "  5. Extract per-cell DNA and RNA BAMs"
+echo "  2. Align all reads with STAR (separates DNA and RNA by splice junctions)"
+echo "  3. Detect real cells using combined DNA+RNA counts"
+echo "  4. Extract per-cell DNA and RNA BAMs"
+echo "  5. Call variants on DNA BAMs with BCFtools"
+echo "  6. Generate RNA count matrix from RNA BAMs"
+echo "  7. Create variant and RNA AnnData objects"
 echo ""
 echo "Output locations:"
-echo "  - Bulk DNA BAM: ${ALIGNED_DIR}/${OUTPUT_NAME}_dna.bam"
-echo "  - Bulk RNA BAM: ${ALIGNED_DIR}/${OUTPUT_NAME}_rna.bam"
-echo "  - Knee plot: ${BIN_DIR}/kneeplot.png"
-echo "  - Real cells list: ${BIN_DIR}/real_cells.txt"
-echo "  - Read counts: ${BIN_DIR}/readcounts.csv"
-echo "  - SC outputs: ${ALIGNED_DIR}/sc_outputs/"
+echo "  - Bulk DNA BAM: ${DATA_DIR}/${OUTPUT_NAME}_dna.bam"
+echo "  - Bulk RNA BAM: ${DATA_DIR}/${OUTPUT_NAME}_rna.bam"
+echo "  - Knee plot: ${RESULTS_DIR}/kneeplot.png"
+echo "  - Real cells list: ${RESULTS_DIR}/real_cells.txt"
+echo "  - Read counts: ${RESULTS_DIR}/readcounts.csv"
+echo "  - SC BAMs and VCFs: ${SC_OUTPUTS_DIR}/"
+echo "  - RNA count matrix: ${RESULTS_DIR}/rna_counts_matrix.csv"
+echo "  - AnnData objects: ${RESULTS_DIR}/variants.h5ad, ${RESULTS_DIR}/rna_counts.h5ad"
 echo ""
