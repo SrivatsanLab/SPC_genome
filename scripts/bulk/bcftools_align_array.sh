@@ -12,12 +12,12 @@
 
 set -euo pipefail
 
-# Configuration
+# Configuration (passed from bcftools_pipeline.sh or use defaults)
 SAMPLE_LIST="${1:-data/bulk_spectra_pilot/BCF/sample_list.txt}"
-FASTQ_DIR="/fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV"
-REFERENCE="/shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64"
-OUTPUT_DIR="data/bulk_spectra_pilot/BCF/bams"
-SCRIPTS_DIR="scripts"
+FASTQ_DIR="${2:-/fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV}"
+REFERENCE="${3:-/shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64}"
+OUTPUT_DIR="${4:-data/bulk_spectra_pilot/BCF/bams}"
+SCRIPTS_DIR="${5:-scripts}"
 
 # Create output directories
 mkdir -p SLURM_outs/

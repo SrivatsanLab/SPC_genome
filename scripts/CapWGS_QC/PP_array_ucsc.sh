@@ -24,7 +24,7 @@ scripts_DIR="$3"
 TMP_DIR="$4"
 
 barcodes="${scripts_DIR}/barcodes"
-demux_scr="${scripts_DIR}/scripts/atrandi_demux.py"
+demux_scr="${scripts_DIR}/scripts/utils/atrandi_demux.py"
 
 chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
 

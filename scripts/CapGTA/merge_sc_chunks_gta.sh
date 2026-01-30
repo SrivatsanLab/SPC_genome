@@ -40,7 +40,8 @@ while IFS= read -r barcode; do
     # Merge DNA chunks
     if [ ${#dna_chunks[@]} -gt 0 ] && [ -f "${dna_chunks[0]}" ]; then
         echo "  Merging ${#dna_chunks[@]} DNA chunks..."
-        samtools merge -@ 4 -f "${final_dna}" "${dna_chunks[@]}"
+        samtools merge -@ 4 -f - "${dna_chunks[@]}" | \
+            samtools sort -@ 4 -o "${final_dna}" -
         samtools index "${final_dna}"
 
         # Clean up chunk files
@@ -52,7 +53,8 @@ while IFS= read -r barcode; do
     # Merge RNA chunks
     if [ ${#rna_chunks[@]} -gt 0 ] && [ -f "${rna_chunks[0]}" ]; then
         echo "  Merging ${#rna_chunks[@]} RNA chunks..."
-        samtools merge -@ 4 -f "${final_rna}" "${rna_chunks[@]}"
+        samtools merge -@ 4 -f - "${rna_chunks[@]}" | \
+            samtools sort -@ 4 -o "${final_rna}" -
         samtools index "${final_rna}"
 
         # Clean up chunk files

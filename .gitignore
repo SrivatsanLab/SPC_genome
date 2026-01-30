@@ -67,7 +67,13 @@ docs/summaries/
 # Logs
 *.log
 
+# Package development (pip install locally, don't track source)
+mutation_profiling/
+cellspec/
+
 # Extras
 notebooks/HSC_nextseq_pilot.ipynb
+notebooks/deprecated/
+notebooks/*_pilot.ipynb
 ._*
 prompt_drafting.md

@@ -24,8 +24,10 @@ Required arguments:
   -n, --cohort-name NAME      Name for this cohort (used in output filenames)
 
 Optional arguments:
-  -r, --reference-dir DIR     Reference genome directory
-                              (default: /shared/biodata/reference/GATK/hg38)
+  -g, --reference FILE        Reference genome FASTA file for variant calling
+                              (default: /shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta)
+  -r, --reference-bwa FILE    BWA index prefix for alignment
+                              (default: /shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64)
   -h, --help                  Show this help message and exit
 
 Default configuration:
@@ -33,7 +35,8 @@ Default configuration:
   FASTQ dir:      /fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV
   Output dir:     data/bulk_spectra_pilot/BCF
   Cohort name:    AAVS_PolE_bcf
-  Reference dir:  /shared/biodata/reference/GATK/hg38
+  Reference:      /shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta
+  BWA index:      /shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64
 
 Example:
   # Use default configuration
@@ -53,7 +56,8 @@ EOF
 SAMPLE_LIST="data/bulk_spectra_pilot/BCF/sample_list.txt"
 FASTQ_DIR="/fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV"
 OUTPUT_DIR="data/bulk_spectra_pilot/BCF"
-REFERENCE_DIR="/shared/biodata/reference/GATK/hg38"
+REFERENCE_FA="/shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta"
+REFERENCE_BWA="/shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64"
 COHORT_NAME="AAVS_PolE_bcf"
 
 # Parse arguments
@@ -75,8 +79,12 @@ while [[ $# -gt 0 ]]; do
             COHORT_NAME="$2"
             shift 2
             ;;
-        -r|--reference-dir)
-            REFERENCE_DIR="$2"
+        -g|--reference)
+            REFERENCE_FA="$2"
+            shift 2
+            ;;
+        -r|--reference-bwa)
+            REFERENCE_BWA="$2"
             shift 2
             ;;
         -h|--help)
@@ -105,8 +113,14 @@ if [ ! -d "${FASTQ_DIR}" ]; then
     exit 1
 fi
 
-if [ ! -d "${REFERENCE_DIR}" ]; then
-    echo "ERROR: Reference directory not found: ${REFERENCE_DIR}"
+if [ ! -f "${REFERENCE_FA}" ]; then
+    echo "ERROR: Reference FASTA not found: ${REFERENCE_FA}"
+    exit 1
+fi
+
+if [ ! -f "${REFERENCE_BWA}.amb" ]; then
+    echo "ERROR: BWA index not found: ${REFERENCE_BWA}"
+    echo "Expected files like ${REFERENCE_BWA}.amb, ${REFERENCE_BWA}.bwt, etc."
     exit 1
 fi
 
@@ -117,7 +131,7 @@ fi
 SCRIPT_DIR="scripts/bulk"
 ALIGN_SCRIPT="${SCRIPT_DIR}/bcftools_align_array.sh"
 VCALL_SCRIPT="${SCRIPT_DIR}/bcftools_call_array.sh"
-JOINT_SCRIPT="${SCRIPT_DIR}/bcftools_joint_calling.sh"
+JOINT_SCRIPT="${SCRIPT_DIR}/bcftools_merge_and_normalize.sh"
 
 # Output paths
 BAM_DIR="${OUTPUT_DIR}/bams"
@@ -142,12 +156,13 @@ echo "BCFtools Variant Calling Pipeline"
 echo "============================================"
 echo ""
 echo "Configuration:"
-echo "  Sample list:     ${SAMPLE_LIST}"
+echo "  Sample list:       ${SAMPLE_LIST}"
 echo "  Number of samples: ${N_SAMPLES}"
-echo "  FASTQ directory: ${FASTQ_DIR}"
-echo "  Output directory: ${OUTPUT_DIR}"
-echo "  Reference dir:   ${REFERENCE_DIR}"
-echo "  Cohort name:     ${COHORT_NAME}"
+echo "  FASTQ directory:   ${FASTQ_DIR}"
+echo "  Output directory:  ${OUTPUT_DIR}"
+echo "  Reference FASTA:   ${REFERENCE_FA}"
+echo "  BWA index:         ${REFERENCE_BWA}"
+echo "  Cohort name:       ${COHORT_NAME}"
 echo ""
 echo "Output files:"
 echo "  BAM files:       ${BAM_DIR}/"
@@ -167,7 +182,11 @@ echo ""
 ALIGN_JOB_ID=$(sbatch --parsable \
     --array=1-${N_SAMPLES} \
     "${ALIGN_SCRIPT}" \
-    "${SAMPLE_LIST}")
+    "${SAMPLE_LIST}" \
+    "${FASTQ_DIR}" \
+    "${REFERENCE_BWA}" \
+    "${BAM_DIR}" \
+    "scripts")
 
 echo "Alignment array job submitted: ${ALIGN_JOB_ID}"
 echo ""
@@ -185,18 +204,21 @@ VCALL_JOB_ID=$(sbatch --parsable \
     --dependency=afterok:${ALIGN_JOB_ID} \
     --array=1-${N_SAMPLES} \
     "${VCALL_SCRIPT}" \
-    "${SAMPLE_LIST}")
+    "${SAMPLE_LIST}" \
+    "${BAM_DIR}" \
+    "${VCF_DIR}" \
+    "${REFERENCE_FA}")
 
 echo "Variant calling array job submitted: ${VCALL_JOB_ID}"
 echo "  (Will run after alignment job ${ALIGN_JOB_ID} completes)"
 echo ""
 
 ##########################################################################################################################
-# Step 3: Submit joint calling job (depends on variant calling completion)
+# Step 3: Submit merge and normalize job (depends on variant calling completion)
 ##########################################################################################################################
 
 echo "============================================"
-echo "Step 3: Submitting joint calling job..."
+echo "Step 3: Submitting merge and normalize job..."
 echo "============================================"
 echo ""
 
@@ -204,6 +226,7 @@ JOINT_JOB_ID=$(sbatch --parsable \
     --dependency=afterok:${VCALL_JOB_ID} \
     "${JOINT_SCRIPT}" \
     "${VCF_DIR}" \
+    "${REFERENCE_FA}" \
     "${JOINT_VCF}" \
     "${COHORT_NAME}")
 

@@ -8,6 +8,7 @@
 ###########################################################################################################################
 # Bulk variant calling on DNA BAM using BCFtools
 # Identifies germline variants from bulk DNA sequencing
+# NOTE: This script does NOT normalize variants - normalization should be done on the merged VCF
 ###########################################################################################################################
 
 set -euo pipefail
@@ -43,8 +44,7 @@ echo ""
 
 # Step 1: Generate mpileup and call variants
 echo "Running bcftools mpileup and call..."
-
-TMP_VCF="${OUTPUT_VCF%.vcf.gz}_raw.vcf.gz"
+echo "Note: Normalization will be performed on the merged multi-sample VCF"
 
 bcftools mpileup \
     --threads 8 \
@@ -57,23 +57,10 @@ bcftools call \
     -m \
     -A \
     -O z \
-    -o "${TMP_VCF}"
+    -o "${OUTPUT_VCF}"
 
-# Step 2: Normalize variants - split multiallelic sites and left-align indels
-echo "Normalizing variants (splitting multiallelic sites, left-aligning indels)..."
-
-bcftools norm \
-    --threads 8 \
-    -m -both \
-    -f "${REFERENCE_FA}" \
-    -O z \
-    -o "${OUTPUT_VCF}" \
-    "${TMP_VCF}"
-
-# Clean up temporary file
-rm "${TMP_VCF}"
-
-echo "Indexing normalized VCF..."
+# Step 2: Index VCF
+echo "Indexing VCF..."
 bcftools index "${OUTPUT_VCF}"
 
 # Generate variant statistics

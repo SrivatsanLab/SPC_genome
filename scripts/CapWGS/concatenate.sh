@@ -34,6 +34,6 @@ samtools index -@ 4 "${BAM_FILE}"
 
 echo "Creating knee plot and detecting real cells..."
 
-samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/readcounts.py" -o "${BIN_DIR}/readcounts.csv"
+samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${BIN_DIR}/readcounts.csv"
 
-cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
