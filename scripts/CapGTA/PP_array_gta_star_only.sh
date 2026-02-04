@@ -30,7 +30,7 @@ scripts_DIR="$3"
 TMP_DIR="$4"
 
 barcodes="${scripts_DIR}/barcodes"
-demux_scr="${scripts_DIR}/scripts/atrandi_demux.py"
+demux_scr="${scripts_DIR}/scripts/utils/atrandi_demux.py"
 
 chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
 
@@ -77,7 +77,7 @@ READ2="${TMP_DIR}/corr_read2_chunk_${chunk}_val_2.fq.gz"
 UNALIGNED_SAM="${TMP_DIR}/${chunk}_unaligned.sam"
 
 echo "Converting trimmed FASTQ to unaligned SAM with CB tags..."
-python "${scripts_DIR}/scripts/fastq_to_unaligned_sam.py" "${READ1}" "${READ2}" "${UNALIGNED_SAM}"
+python "${scripts_DIR}/scripts/utils/fastq_to_unaligned_sam.py" "${READ1}" "${READ2}" "${UNALIGNED_SAM}"
 
 # Delete trimmed fastqs to save space
 rm "${READ1}" "${READ2}"
@@ -89,18 +89,12 @@ rm "${READ1}" "${READ2}"
 # Load STAR 2.7.9a
 module load STAR/2.7.9a-GCC-11.2.0
 
-# Construct STAR index path
-# First check for custom-built index in project directory
-if [ -d "./data/reference/WBcel235_STAR279a" ]; then
-    STAR_INDEX="./data/reference/WBcel235_STAR279a"
-    echo "Using custom STAR index: ${STAR_INDEX}"
-elif [ -d "${genome}/STARIndex" ]; then
+# Construct STAR index path from genome parameter
+if [ -d "${genome}/STARIndex" ]; then
     STAR_INDEX="${genome}/STARIndex"
-    echo "Using system STAR index: ${STAR_INDEX}"
+    echo "Using STAR index: ${STAR_INDEX}"
 else
-    echo "Error: Could not find STAR index"
-    echo "Tried: ./data/reference/WBcel235_STAR279a"
-    echo "Tried: ${genome}/STARIndex"
+    echo "Error: Could not find STAR index at ${genome}/STARIndex"
     exit 1
 fi
 

@@ -60,10 +60,10 @@ echo "RNA BAM created: ${RNA_BAM}"
 ###########################################################################################################################
 
 echo "Counting reads per barcode from DNA BAM..."
-samtools view -@ 8 "${DNA_BAM}" | python "${SCRIPTS_DIR}/scripts/readcounts.py" -o "${BIN_DIR}/readcounts_dna.csv"
+samtools view -@ 8 "${DNA_BAM}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${BIN_DIR}/readcounts_dna.csv"
 
 echo "Counting reads per barcode from RNA BAM..."
-samtools view -@ 8 "${RNA_BAM}" | python "${SCRIPTS_DIR}/scripts/readcounts.py" -o "${BIN_DIR}/readcounts_rna.csv"
+samtools view -@ 8 "${RNA_BAM}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${BIN_DIR}/readcounts_rna.csv"
 
 echo "Combining DNA and RNA read counts..."
 python - <<EOF
@@ -95,7 +95,7 @@ EOF
 
 echo "Creating knee plot and detecting real cells using combined DNA+RNA counts..."
 
-cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
 
 cell_count=$(wc -l < "${BIN_DIR}/real_cells.txt")
 echo "Detected ${cell_count} real cells"
