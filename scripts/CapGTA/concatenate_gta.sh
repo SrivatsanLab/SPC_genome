@@ -19,6 +19,9 @@ ALIGNED_DIR="$3"  # Directory for aligned BAM/SAM files (data/[experiment]/align
 BIN_DIR="$4"      # Directory for metadata files (bin/[experiment]/)
 SCRIPTS_DIR="$5"
 
+# Extract just the sample name (basename) for file naming
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+
 module load SAMtools
 
 ###########################################################################################################################
@@ -28,7 +31,7 @@ module load SAMtools
 echo "Listing DNA SAM chunks..."
 ls $TMP_dir/*_dna.sam > "${BIN_DIR}/sam_list_dna.txt"
 
-DNA_BAM="${ALIGNED_DIR}/${OUTPUT_NAME}_dna.bam"
+DNA_BAM="${ALIGNED_DIR}/${SAMPLE_NAME}_dna.bam"
 
 echo "Merging DNA SAM chunks directly to sorted BAM..."
 samtools merge -@ 8 -b "${BIN_DIR}/sam_list_dna.txt" -O SAM - | samtools sort -@ 8 -o "${DNA_BAM}"
@@ -45,7 +48,7 @@ echo "DNA BAM created: ${DNA_BAM}"
 echo "Listing RNA SAM chunks..."
 ls $TMP_dir/*_rna.sam > "${BIN_DIR}/sam_list_rna.txt"
 
-RNA_BAM="${ALIGNED_DIR}/${OUTPUT_NAME}_rna.bam"
+RNA_BAM="${ALIGNED_DIR}/${SAMPLE_NAME}_rna.bam"
 
 echo "Merging RNA SAM chunks directly to sorted BAM..."
 samtools merge -@ 8 -b "${BIN_DIR}/sam_list_rna.txt" -O SAM - | samtools sort -@ 8 -o "${RNA_BAM}"
