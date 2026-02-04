@@ -51,7 +51,7 @@ show_help() {
     cat << EOF
 Usage: $0 -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome.fa> -r <read_count>
 
-This script processes CapWGS data: alignment, cell detection, variant calling, and AnnData generation.
+This script processes CapWGS data: alignment, cell detection, and variant calling.
 Uses defaults from config.yaml if present. Command-line arguments override config.yaml values.
 
 Required arguments:
@@ -192,17 +192,13 @@ submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_jo
 echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 
 ######################################################################################################
-#### Joint calling and h5ad generation
+#### Joint calling
 
 # This wrapper script will:
 # 1. Generate genomic intervals for parallelization
 # 2. Create barcodes.map from VCF files
 # 3. Submit joint calling array job (GenomicsDBImport + GenotypeGVCFs per interval)
-# 4. Compile interval h5ad files into final AnnData object in results/
 
 submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${OUTPUT_NAME}")
 
-echo "Joint calling and h5ad generation submission job ID: ${submit_jc_job_ID}"
-
-######################################################################################################
-#### Submit anndata job
+echo "Joint calling submission job ID: ${submit_jc_job_ID}"

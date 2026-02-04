@@ -5,7 +5,7 @@
 #SBATCH -t 30
 
 ###########################################################################################################################
-# Wrapper script that submits joint calling and h5ad compilation
+# Wrapper script that submits joint calling
 # This script runs AFTER single-cell variant calling completes
 ###########################################################################################################################
 
@@ -23,7 +23,6 @@ REFERENCE="${REFERENCE_GENOME}/Homo_sapiens_assembly38.fasta"
 INTERVALS_FILE="${BIN_DIR}/intervals.bed"
 BARCODES_MAP="${BIN_DIR}/barcodes.map"
 TMP_JC_DIR="/hpc/temp/srivatsan_s/joint_calling_${OUTPUT_NAME}"
-FINAL_H5AD="${RESULTS_DIR}/${OUTPUT_NAME}.h5ad"
 
 mkdir -p "${TMP_JC_DIR}"
 mkdir -p "${RESULTS_DIR}"
@@ -114,13 +113,4 @@ else
     echo "All joint calling jobs: ${all_jc_jobs}"
 fi
 
-# Submit h5ad compilation job (after ALL joint calling batches complete)
-echo "Submitting h5ad compilation..."
-compile_ID=$(sbatch --parsable \
-    --dependency=afterok:${all_jc_jobs} \
-    "${SCRIPTS_DIR}/scripts/compile_h5ad.sh" \
-    "${TMP_JC_DIR}" \
-    "${FINAL_H5AD}")
-
-echo "H5ad compilation job submitted: ${compile_ID}"
-echo "Final h5ad will be saved to: ${FINAL_H5AD}"
+echo "Joint calling pipeline complete. VCF files will be in: ${TMP_JC_DIR}"

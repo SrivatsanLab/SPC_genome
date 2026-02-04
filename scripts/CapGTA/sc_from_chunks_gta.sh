@@ -4,7 +4,7 @@
 
 ##########################################################################################################################
 # This job extracts DNA and RNA reads from single cells from each chunk, then compiles into single cell BAMs            #
-# Then performs variant calling, RNA counting, and AnnData generation                                                   #
+# Then performs variant calling and RNA counting                                                                        #
 ##########################################################################################################################
 
 chunk_indices="$1"
@@ -122,18 +122,9 @@ merge_vcf_job_id=$(sbatch --parsable --dependency=afterok:${vcall_job_id} "${scr
 
 echo "VCF merge job submitted (ID: ${merge_vcf_job_id}). Merged VCF will be: ${MERGED_VCF}"
 echo ""
-
-# Create AnnData objects (depends on both count matrix and merged VCF)
-RNA_MATRIX="${RESULTS_DIR}/rna_counts_matrix.csv"
-
-anndata_job_id=$(sbatch --parsable --dependency=afterok:${count_job_id}:${merge_vcf_job_id} "${scripts_DIR}/scripts/CapGTA/create_anndata_objects.sh" \
-    "${MERGED_VCF}" \
-    "${RNA_MATRIX}" \
-    "${RESULTS_DIR}" \
-    "${scripts_DIR}")
-
-echo "AnnData creation job submitted (ID: ${anndata_job_id}). H5AD files will be in: ${RESULTS_DIR}"
-echo ""
 echo "================================"
 echo "Pipeline submission complete!"
 echo "================================"
+echo "Final outputs:"
+echo "  - RNA count matrix: ${RESULTS_DIR}/rna_counts_matrix.csv"
+echo "  - Merged VCF: ${MERGED_VCF}"

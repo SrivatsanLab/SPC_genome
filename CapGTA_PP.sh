@@ -52,7 +52,7 @@ show_help() {
 Usage: $0 -o <OUTPUT_NAME> -1 <read1.fastq.gz> -2 <read2.fastq.gz> -g <reference_genome> -r <read_count>
 
 This script processes genome-transcriptome coassay (CapGTA) data, separating DNA and RNA reads.
-Includes alignment, cell detection, single-cell extraction, variant calling, and AnnData generation.
+Includes alignment, cell detection, single-cell extraction, variant calling, and RNA count matrix generation.
 Uses defaults from config.yaml if present. Command-line arguments override config.yaml values.
 
 Required arguments:
@@ -71,7 +71,7 @@ Optional arguments:
 Directory structure created:
   - data/{sample}/                 Bulk DNA and RNA alignments
   - data/{sample}/sc_outputs/      Single-cell DNA/RNA BAMs and VCFs
-  - results/{sample}/              Final AnnData objects, QC metrics, RNA count matrices
+  - results/{sample}/              Joint calling VCF, QC metrics, RNA count matrices
   - {TMP_DIR}/{sample}/            Temporary chunks (deleted after completion)
 
 Note: Values are applied in this order: hardcoded defaults < config.yaml < command-line arguments
@@ -174,9 +174,9 @@ concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_D
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Extract single cells, call variants, create count matrices and AnnData objects
+#### Extract single cells, call variants, and create count matrices
 
-# This job extracts reads for each detected cell from the chunked SAM files, calls variants, and creates AnnData
+# This job extracts reads for each detected cell from the chunked SAM files, calls variants, and creates RNA count matrices
 # Outputs SC BAMs and VCFs to data/{sample}/sc_outputs/, final results to results/{sample}/
 sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_chunks_gta.sh" \
     "${RESULTS_DIR}/chunk_indices.txt" \
@@ -187,7 +187,7 @@ sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "$
     "${RESULTS_DIR}" \
     "${OUTPUT_NAME}")
 
-echo "Single cell extraction, variant calling, and AnnData generation job ID: ${sc_from_chunks_job_ID}"
+echo "Single cell extraction, variant calling, and RNA count matrix generation job ID: ${sc_from_chunks_job_ID}"
 
 ######################################################################################################
 #### Pipeline completion
@@ -203,7 +203,6 @@ echo "  3. Detect real cells using combined DNA+RNA counts"
 echo "  4. Extract per-cell DNA and RNA BAMs"
 echo "  5. Call variants on DNA BAMs with BCFtools"
 echo "  6. Generate RNA count matrix from RNA BAMs"
-echo "  7. Create variant and RNA AnnData objects"
 echo ""
 echo "Output locations:"
 echo "  - Bulk DNA BAM: ${DATA_DIR}/$(basename "${OUTPUT_NAME}")_dna.bam"
@@ -212,6 +211,6 @@ echo "  - Knee plot: ${RESULTS_DIR}/kneeplot.png"
 echo "  - Real cells list: ${RESULTS_DIR}/real_cells.txt"
 echo "  - Read counts: ${RESULTS_DIR}/readcounts.csv"
 echo "  - SC BAMs and VCFs: ${SC_OUTPUTS_DIR}/"
+echo "  - Merged VCF: ${RESULTS_DIR}/sc_variants_merged.vcf.gz"
 echo "  - RNA count matrix: ${RESULTS_DIR}/rna_counts_matrix.csv"
-echo "  - AnnData objects: ${RESULTS_DIR}/variants.h5ad, ${RESULTS_DIR}/rna_counts.h5ad"
 echo ""

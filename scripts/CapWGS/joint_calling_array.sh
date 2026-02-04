@@ -25,7 +25,6 @@ DB_PATH="${temp}/database_${SLURM_ARRAY_TASK_ID}"
 
 GATK_output="${temp}/${INTERVAL}.vcf.gz"
 final_output="${temp}/${INTERVAL}.bcf"
-anndata="${temp}/${INTERVAL}.h5ad"
 
 echo "Running for interval: ${INTERVAL}" 
 
@@ -52,12 +51,6 @@ module load BCFtools/1.18-GCC-12.2.0
 
 # Normalize VCF (split multi-allelic sites)
 bcftools norm -m - "${GATK_output}" -Ob -o "${final_output}"
-
-# Unload modules to avoid Python path conflicts, then run Python script
-module purge
-
-# Make Anndata Object from normalized VCF
-$CONDA_PREFIX/bin/python "${scripts_dir}/scripts/make_variant_anndata.py" "${final_output}" "${anndata}"
 
 # cleanup
 rm "${GATK_output}"
