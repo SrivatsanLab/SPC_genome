@@ -101,11 +101,14 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     exit 1
 fi
 
+# Extract sample name from output path (handles paths like "benchmarking_coverage/HSC2_enzyme")
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+
 # Set up sample-specific directory structure
 DATA_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}"
 SC_OUTPUTS_DIR="${DATA_DIR}/sc_outputs"
 RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
-TMP_DIR="${TMP_DIR_BASE}/${OUTPUT_NAME}"
+TMP_DIR="${TMP_DIR_BASE}/${SAMPLE_NAME}"
 
 # Create necessary directories
 mkdir -p "${DATA_DIR}"
@@ -167,14 +170,14 @@ else
     PP_SCRIPT="${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh"
 fi
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
@@ -202,7 +205,7 @@ echo "Pipeline will complete after bigwig and Lorenz curve generation."
 echo "No variant calling will be performed."
 echo ""
 echo "Output locations:"
-echo "  - Bulk BAM: ${DATA_DIR}/${OUTPUT_NAME}.bam"
+echo "  - Bulk BAM: ${DATA_DIR}/${SAMPLE_NAME}.bam"
 echo "  - Knee plot: ${RESULTS_DIR}/kneeplot.png"
 echo "  - Real cells list: ${RESULTS_DIR}/real_cells.txt"
 echo "  - Read counts: ${RESULTS_DIR}/readcounts.csv"

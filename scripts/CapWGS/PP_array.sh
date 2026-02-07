@@ -21,6 +21,7 @@ chunk_indices="$1"
 genome="$2"
 scripts_DIR="$3"
 TMP_DIR="$4"
+SAMPLE_NAME="$5"
 
 barcodes="${scripts_DIR}/barcodes"
 demux_scr="${scripts_DIR}/scripts/utils/atrandi_demux.py"
@@ -76,7 +77,9 @@ BWA_INDEX="${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
 SAM_FILE="${TMP_DIR}/${chunk}.sam"
 
 echo "Aligning with BWA-MEM"
-bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
+# Add read group for GATK compatibility
+RG="@RG\tID:${SAMPLE_NAME}_chunk${chunk}\tSM:${SAMPLE_NAME}\tPL:ILLUMINA\tLB:${SAMPLE_NAME}"
+bwa mem -t 4 -c 1 -C -R "${RG}" -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
 
 # Delete fastq's
 rm "${READ1}" "${READ2}"
