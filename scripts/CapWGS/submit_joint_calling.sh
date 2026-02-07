@@ -17,15 +17,60 @@ ALIGNED_DIR="$3"
 RESULTS_DIR="$4"
 SCRIPTS_DIR="$5"
 OUTPUT_NAME="$6"
+VARIANT_CALLER="${7:-gatk}"  # Default to gatk for backward compatibility
+
+echo "=========================================="
+echo "Joint Calling Submission"
+echo "=========================================="
+echo "Sample: ${OUTPUT_NAME}"
+echo "Variant caller: ${VARIANT_CALLER}"
+echo "=========================================="
+echo ""
 
 # Paths
 REFERENCE="${REFERENCE_GENOME}/Homo_sapiens_assembly38.fasta"
-INTERVALS_FILE="${BIN_DIR}/intervals.bed"
-BARCODES_MAP="${BIN_DIR}/barcodes.map"
-TMP_JC_DIR="/hpc/temp/srivatsan_s/joint_calling_${OUTPUT_NAME}"
 
-mkdir -p "${TMP_JC_DIR}"
 mkdir -p "${RESULTS_DIR}"
+
+##########################################################################################################################
+# Handle variant caller-specific joint calling
+##########################################################################################################################
+
+if [ "$VARIANT_CALLER" = "bcftools" ]; then
+    ##################################################################################################################
+    # BCFtools mode: Merge and normalize VCFs
+    ##################################################################################################################
+
+    echo "BCFtools mode: Merging and normalizing VCFs..."
+    echo ""
+
+    OUTPUT_VCF="${RESULTS_DIR}/${OUTPUT_NAME}_joint.vcf.gz"
+
+    # Submit BCFtools merge and normalize job
+    bcf_jc_ID=$(sbatch --parsable \
+        "${SCRIPTS_DIR}/scripts/CapWGS/bcftools_joint_calling.sh" \
+        "${ALIGNED_DIR}" \
+        "${REFERENCE_GENOME}" \
+        "${OUTPUT_VCF}" \
+        "${OUTPUT_NAME}")
+
+    echo "BCFtools joint calling job submitted: ${bcf_jc_ID}"
+    echo "Output VCF will be: ${OUTPUT_VCF}"
+    echo ""
+
+elif [ "$VARIANT_CALLER" = "gatk" ]; then
+    ##################################################################################################################
+    # GATK mode: GenomicsDBImport + GenotypeGVCFs with parallelization
+    ##################################################################################################################
+
+    echo "GATK mode: Running GenomicsDBImport and GenotypeGVCFs..."
+    echo ""
+
+    INTERVALS_FILE="${BIN_DIR}/intervals.bed"
+    BARCODES_MAP="${BIN_DIR}/barcodes.map"
+    TMP_JC_DIR="/hpc/temp/srivatsan_s/joint_calling_${OUTPUT_NAME}"
+
+    mkdir -p "${TMP_JC_DIR}"
 
 # Generate intervals for parallelization (1Mb windows)
 echo "Generating genomic intervals..."
@@ -113,4 +158,16 @@ else
     echo "All joint calling jobs: ${all_jc_jobs}"
 fi
 
-echo "Joint calling pipeline complete. VCF files will be in: ${TMP_JC_DIR}"
+    echo "GATK joint calling pipeline submitted. VCF files will be in: ${TMP_JC_DIR}"
+    echo ""
+
+else
+    echo "ERROR: Invalid variant caller: ${VARIANT_CALLER}"
+    echo "Must be 'gatk' or 'bcftools'"
+    exit 1
+fi
+
+echo "=========================================="
+echo "Joint calling submission complete!"
+echo "=========================================="
+echo ""

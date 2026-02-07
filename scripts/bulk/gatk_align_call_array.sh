@@ -3,12 +3,12 @@
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 8
 #SBATCH --mem=64G
-#SBATCH -t 24:00:00
+#SBATCH -t 3-00:00:00
 
 ##########################################################################################################################
 # Bulk DNA alignment and GVCF calling following GATK best practices
 # This script:
-# 1. Merges all passage fastqs for a given clone
+# 1. Finds fastq files for a given sample (individual passage)
 # 2. Trims adapters with trim_galore
 # 3. Aligns to GRCh38 with BWA-MEM
 # 4. Marks duplicates with Picard MarkDuplicates
@@ -19,11 +19,12 @@
 set -euo pipefail
 
 # Arguments
-SAMPLE_LIST="$1"        # File with one sample name per line (e.g., AAVS_Clone_4)
+SAMPLE_LIST="$1"        # File with one sample name per line (e.g., AAVS_Clone_4_P1)
 FASTQ_DIR="$2"          # Directory containing input fastq files
 OUTPUT_DIR="$3"         # Output directory for BAMs and VCFs
 REFERENCE_DIR="$4"      # Reference directory (e.g., /shared/biodata/reference/GATK/hg38)
 TMP_BASE_DIR="${5:-}"   # Optional: base temp directory (default: /hpc/temp/srivatsan_s)
+SCRIPTS_ROOT="${6:-.}"  # Optional: scripts root directory (default: current directory)
 
 # Get the sample for this array task
 SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$SAMPLE_LIST")
@@ -53,9 +54,11 @@ mkdir -p SLURM_outs/array_outs
 # Define paths
 REFERENCE="${REFERENCE_DIR}/Homo_sapiens_assembly38.fasta"
 BWA_INDEX="${REFERENCE_DIR}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
-DBSNP="${REFERENCE_DIR}/Homo_sapiens_assembly38.dbsnp138.vcf"
-KNOWN_INDELS="${REFERENCE_DIR}/Homo_sapiens_assembly38.known_indels.vcf.gz"
-MILLS_INDELS="${REFERENCE_DIR}/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+
+# Detect known sites files for BQSR (looks in bundle/ subdirectory)
+source "${SCRIPTS_ROOT}/scripts/utils/detect_known_sites.sh"
+detect_known_sites "${REFERENCE_DIR}"
+# After calling detect_known_sites, these variables are set: DBSNP, KNOWN_INDELS, MILLS_INDELS, KNOWN_SITES_ARGS
 
 # Output files
 MERGED_R1="${SAMPLE_TMP}/${SAMPLE}_R1.fastq.gz"
@@ -72,44 +75,40 @@ BQSR_BAM="${OUTPUT_DIR}/bams/${SAMPLE}.bqsr.bam"
 OUTPUT_GVCF="${OUTPUT_DIR}/gvcfs/${SAMPLE}.g.vcf.gz"
 
 ##########################################################################################################################
-# Step 1: Merge fastq files for all passages of this clone
+# Step 1: Find fastq files for this sample (individual passage)
 ##########################################################################################################################
 
 echo ""
-echo "Step 1: Merging fastq files..."
-echo "Sample pattern: ${SAMPLE}_P*"
+echo "Step 1: Finding fastq files for sample: ${SAMPLE}"
 
-# Find all R1 and R2 files for this sample (all passages)
-# Use ls instead of find for better compatibility with symlinks
-R1_FILES=$(ls "${FASTQ_DIR}"/${SAMPLE}_P*_R1_001.fastq.gz 2>/dev/null | sort)
-R2_FILES=$(ls "${FASTQ_DIR}"/${SAMPLE}_P*_R2_001.fastq.gz 2>/dev/null | sort)
+# Find the R1 and R2 files for this specific sample
+# Sample name includes passage info (e.g., AAVS_Clone_4_P1)
+# Files are named: AAVS_Clone_4_P1_S1_L008_R1_001.fastq.gz
+R1_FILE=$(ls "${FASTQ_DIR}"/${SAMPLE}_S*_L*_R1_001.fastq.gz 2>/dev/null | head -n 1)
+R2_FILE=$(ls "${FASTQ_DIR}"/${SAMPLE}_S*_L*_R2_001.fastq.gz 2>/dev/null | head -n 1)
 
 # Check if files were found
-if [ -z "$R1_FILES" ]; then
-    echo "ERROR: No R1 fastq files found for sample ${SAMPLE}"
+if [ -z "$R1_FILE" ] || [ ! -f "$R1_FILE" ]; then
+    echo "ERROR: R1 fastq file not found for sample ${SAMPLE}"
+    echo "Searched for: ${FASTQ_DIR}/${SAMPLE}_S*_L*_R1_001.fastq.gz"
     exit 1
 fi
 
-# Count files
-N_R1=$(echo "$R1_FILES" | wc -l)
-N_R2=$(echo "$R2_FILES" | wc -l)
+if [ -z "$R2_FILE" ] || [ ! -f "$R2_FILE" ]; then
+    echo "ERROR: R2 fastq file not found for sample ${SAMPLE}"
+    echo "Searched for: ${FASTQ_DIR}/${SAMPLE}_S*_L*_R2_001.fastq.gz"
+    exit 1
+fi
 
-echo "Found ${N_R1} R1 files and ${N_R2} R2 files"
-echo "R1 files:"
-echo "$R1_FILES"
-echo ""
-echo "R2 files:"
-echo "$R2_FILES"
+echo "Found fastq files:"
+echo "  R1: ${R1_FILE}"
+echo "  R2: ${R2_FILE}"
 
-# Merge R1 files
-echo "Merging R1 files..."
-cat $R1_FILES > "${MERGED_R1}"
+# Create symlinks to use consistent naming
+ln -sf "${R1_FILE}" "${MERGED_R1}"
+ln -sf "${R2_FILE}" "${MERGED_R2}"
 
-# Merge R2 files
-echo "Merging R2 files..."
-cat $R2_FILES > "${MERGED_R2}"
-
-echo "Merged files created:"
+echo "Created symlinks:"
 echo "  R1: ${MERGED_R1}"
 echo "  R2: ${MERGED_R2}"
 
@@ -219,21 +218,9 @@ module load GATK
 # BaseRecalibrator - generates recalibration table
 echo "Running BaseRecalibrator..."
 
-# Build known sites arguments
-KNOWN_SITES_ARGS=""
-if [ -f "${DBSNP}" ]; then
-    KNOWN_SITES_ARGS="${KNOWN_SITES_ARGS} --known-sites ${DBSNP}"
-fi
-if [ -f "${KNOWN_INDELS}" ]; then
-    KNOWN_SITES_ARGS="${KNOWN_SITES_ARGS} --known-sites ${KNOWN_INDELS}"
-fi
-if [ -f "${MILLS_INDELS}" ]; then
-    KNOWN_SITES_ARGS="${KNOWN_SITES_ARGS} --known-sites ${MILLS_INDELS}"
-fi
-
-# If no known sites files exist, skip BQSR and use markdup BAM directly
+# If no known sites files were found, skip BQSR and use markdup BAM directly
 if [ -z "$KNOWN_SITES_ARGS" ]; then
-    echo "WARNING: No known sites files found. Skipping BQSR step."
+    echo "Skipping BQSR step (no known sites files found)."
     echo "Using mark duplicates BAM for variant calling."
     BQSR_BAM="${MARKDUP_BAM}"
 else

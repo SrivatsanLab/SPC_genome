@@ -16,6 +16,7 @@ REAL_CELLS_FILE="$2"
 REFERENCE_GENOME="$3"
 OUTPUT_DIR="$4"
 SCRIPTS_DIR="$5"
+VARIANT_CALLER="${6:-gatk}"  # Default to gatk for backward compatibility
 
 # Verify real_cells.txt exists
 if [ ! -f "$REAL_CELLS_FILE" ]; then
@@ -36,14 +37,37 @@ fi
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
 
-# Submit single cell variant calling array
-sc_var_array_ID=$(sbatch --parsable \
-    --array=1-${cell_count} \
-    "${SCRIPTS_DIR}/scripts/sc_var_array.sh" \
-    "${TMP_DIR}" \
-    "${REAL_CELLS_FILE}" \
-    "${REFERENCE_GENOME}" \
-    "${OUTPUT_DIR}")
+# Submit appropriate variant calling array based on caller
+if [ "$VARIANT_CALLER" = "gatk" ]; then
+    echo "Using GATK HaplotypeCaller for variant calling (GVCF mode)"
 
-echo "Single cell variant calling array submitted: ${sc_var_array_ID}"
-echo "Array size: 1-${cell_count}"
+    # Submit GATK HaplotypeCaller array (generates GVCFs from preprocessed single-cell BAMs)
+    sc_var_array_ID=$(sbatch --parsable \
+        --array=1-${cell_count} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/sc_var_array_gatk.sh" \
+        "${REAL_CELLS_FILE}" \
+        "${REFERENCE_GENOME}" \
+        "${OUTPUT_DIR}")
+
+    echo "GATK HaplotypeCaller array submitted: ${sc_var_array_ID}"
+    echo "Array size: 1-${cell_count}"
+    echo "Output: GVCF files for joint calling"
+elif [ "$VARIANT_CALLER" = "bcftools" ]; then
+    echo "Using BCFtools for variant calling"
+
+    # Submit BCFtools mpileup/call array (generates VCFs)
+    sc_var_array_ID=$(sbatch --parsable \
+        --array=1-${cell_count} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/sc_var_array_bcftools.sh" \
+        "${REAL_CELLS_FILE}" \
+        "${REFERENCE_GENOME}" \
+        "${OUTPUT_DIR}")
+
+    echo "BCFtools variant calling array submitted: ${sc_var_array_ID}"
+    echo "Array size: 1-${cell_count}"
+    echo "Output: VCF files for merging"
+else
+    echo "ERROR: Invalid variant caller: ${VARIANT_CALLER}"
+    echo "Must be 'gatk' or 'bcftools'"
+    exit 1
+fi

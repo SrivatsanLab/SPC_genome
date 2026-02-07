@@ -257,3 +257,4 @@ echo "  ${N_SAMPLES} VCF files in ${VCF_DIR}/"
 echo "  1 merged VCF in ${JOINT_VCF}"
 echo ""
 echo "Done!"
+
