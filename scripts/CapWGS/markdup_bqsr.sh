@@ -22,7 +22,7 @@ set -euo pipefail
 # Arguments
 INPUT_BAM="$1"              # Input bulk BAM file
 OUTPUT_DIR="$2"             # Output directory for processed BAM
-REFERENCE_DIR="$3"          # Reference genome directory
+REFERENCE_INPUT="$3"        # Reference genome (can be directory or FASTA file path)
 SCRIPTS_DIR="$4"            # Scripts directory (for sourcing utilities)
 OUTPUT_NAME="$5"            # Sample name
 
@@ -31,7 +31,7 @@ echo "Mark Duplicates and BQSR"
 echo "=========================================="
 echo "Input BAM: ${INPUT_BAM}"
 echo "Output directory: ${OUTPUT_DIR}"
-echo "Reference directory: ${REFERENCE_DIR}"
+echo "Reference input: ${REFERENCE_INPUT}"
 echo "Sample name: ${OUTPUT_NAME}"
 echo "=========================================="
 echo ""
@@ -47,19 +47,33 @@ mkdir -p "${OUTPUT_DIR}"
 METRICS_DIR="${OUTPUT_DIR}/metrics"
 mkdir -p "${METRICS_DIR}"
 
-# Define reference genome path
-REFERENCE="${REFERENCE_DIR}/Homo_sapiens_assembly38.fasta"
+# Determine reference FASTA and directory (handle both file and directory inputs)
+if [ -f "${REFERENCE_INPUT}" ]; then
+    # Reference input is a FASTA file
+    REFERENCE="${REFERENCE_INPUT}"
+    REFERENCE_DIR=$(dirname "${REFERENCE_INPUT}")
+elif [ -d "${REFERENCE_INPUT}" ]; then
+    # Reference input is a directory, find FASTA file
+    REFERENCE_DIR="${REFERENCE_INPUT}"
 
-# Check if reference exists, try alternative naming
-if [ ! -f "${REFERENCE}" ]; then
-    # Try to find any .fasta or .fa file in the reference directory
-    REFERENCE=$(find "${REFERENCE_DIR}" -maxdepth 1 -name "*.fasta" -o -name "*.fa" | head -n 1)
-    if [ -z "${REFERENCE}" ] || [ ! -f "${REFERENCE}" ]; then
-        echo "ERROR: Reference genome not found in ${REFERENCE_DIR}"
-        exit 1
+    # Try GATK bundle naming first
+    if [ -f "${REFERENCE_DIR}/Homo_sapiens_assembly38.fasta" ]; then
+        REFERENCE="${REFERENCE_DIR}/Homo_sapiens_assembly38.fasta"
+    else
+        # Search for any .fasta or .fa file
+        REFERENCE=$(find "${REFERENCE_DIR}" -maxdepth 1 \( -name "*.fasta" -o -name "*.fa" \) | head -n 1)
+        if [ -z "${REFERENCE}" ] || [ ! -f "${REFERENCE}" ]; then
+            echo "ERROR: Reference genome not found in ${REFERENCE_DIR}"
+            exit 1
+        fi
     fi
-    echo "Using reference genome: ${REFERENCE}"
+else
+    echo "ERROR: Reference input is neither a file nor directory: ${REFERENCE_INPUT}"
+    exit 1
 fi
+
+echo "Using reference FASTA: ${REFERENCE}"
+echo "Reference directory: ${REFERENCE_DIR}"
 
 # Define output files
 MARKDUP_BAM="${OUTPUT_DIR}/${OUTPUT_NAME}.markdup.bam"
