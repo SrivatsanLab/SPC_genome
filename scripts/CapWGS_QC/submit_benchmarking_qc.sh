@@ -59,7 +59,7 @@ echo ""
 # Submit array job
 JOB_ID=$(sbatch --parsable \
     --array=1-${SAMPLE_COUNT} \
-    scripts/benchmarking_qc_array.sh \
+    scripts/CapWGS_QC/benchmarking_qc_array.sh \
     "${SAMPLE_LIST}" \
     "${OUTPUT_DIR}" \
     "${REFERENCE}" \

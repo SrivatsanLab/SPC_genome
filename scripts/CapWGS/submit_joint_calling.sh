@@ -112,7 +112,7 @@ if [ "${interval_count}" -le "${MAX_ARRAY_SIZE}" ]; then
     # Small enough to submit as single array
     jc_array_ID=$(sbatch --parsable \
         --array=1-${interval_count} \
-        "${SCRIPTS_DIR}/scripts/joint_calling_array.sh" \
+        "${SCRIPTS_DIR}/scripts/CapWGS/joint_calling_array.sh" \
         "${TMP_JC_DIR}" \
         "${BARCODES_MAP}" \
         "${INTERVALS_FILE}" \
@@ -139,7 +139,7 @@ else
 
         batch_jc_ID=$(sbatch --parsable \
             --array=${start}-${end} \
-            "${SCRIPTS_DIR}/scripts/joint_calling_array.sh" \
+            "${SCRIPTS_DIR}/scripts/CapWGS/joint_calling_array.sh" \
             "${TMP_JC_DIR}" \
             "${BARCODES_MAP}" \
             "${INTERVALS_FILE}" \

@@ -22,6 +22,6 @@ micromamba activate default_jupyter
 
 # Run binned coverage Python script
 # Note: The script expects 0-indexed task IDs internally
-python scripts/binned_coverage.py "${SAMPLE_LIST}" "${BIGWIG_DIR}" "${OUTPUT_DIR}"
+python scripts/CapWGS_QC/binned_coverage.py "${SAMPLE_LIST}" "${BIGWIG_DIR}" "${OUTPUT_DIR}"
 
 echo "Binned coverage complete for task ${SLURM_ARRAY_TASK_ID}"

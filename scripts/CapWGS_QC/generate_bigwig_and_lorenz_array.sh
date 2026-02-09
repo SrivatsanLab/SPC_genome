@@ -55,7 +55,7 @@ echo "Computing Lorenz curve..."
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate default_jupyter
 
-python scripts/lorenz.py "${BIGWIG_FILE}" \
+python scripts/CapWGS_QC/lorenz.py "${BIGWIG_FILE}" \
   -o "${LORENZ_FILE}" \
   -b ${BINSIZE} \
   --gini-output "${GINI_FILE}"
