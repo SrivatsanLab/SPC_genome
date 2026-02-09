@@ -178,7 +178,117 @@ Read counts for samples in `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/
 
 ### Git Commits on Branch `2-vcaller_selection`
 
+- `6401559` Update CLAUDE.md with session summary
+- `e4d905d` Fix critical bugs in CapWGS pipeline
+- `e34641a` Add optional -c/--cell-count parameter to override automatic cell detection
 - `6e9da20` Fix script paths for reorganized directory structure
 - `2a5f62d` Implement variant caller selection for CapWGS pipeline (#2)
 - `9783ccb` Add read groups to BWA alignments for GATK compatibility
 - Earlier commits: Remove AnnData generation, fix BAM paths, etc.
+
+---
+
+## Session Update (Feb 9, 2026)
+
+### New Features Implemented
+
+**1. Cell Count Override Parameter (`-c/--cell-count`)**
+- Added optional `-c` parameter to all three main pipelines (CapWGS_PP.sh, CapWGS_PP_QC_only.sh, CapGTA_PP.sh)
+- Allows manual specification of top N cells by read count, bypassing automatic knee plot detection
+- Useful when knee plot is biased by outlier cells with exceptionally high coverage
+- Knee plot still generated for QC purposes even when `-c` is provided
+- Fully backward compatible (automatic detection used when parameter not provided)
+
+**Implementation:**
+- Updated main pipeline scripts to accept `-c` parameter
+- Modified `concatenate.sh` and `concatenate_gta.sh` with conditional logic:
+  - If `-c N` provided: Select top N cells by read count (`tail -n +2 | sort -t',' -k2 -nr | head -N`)
+  - If not provided: Use `detect_cells.py` knee plot algorithm (original behavior)
+- Updated help messages and documentation
+
+**Usage example:**
+```bash
+sbatch CapWGS_PP.sh -o sample_name -1 R1.fq.gz -2 R2.fq.gz -g ref.fa -r 1000000 -v gatk -c 80
+```
+
+### Critical Bug Fixes
+
+**1. sc_from_chunks.sh Argument Order (CRITICAL)**
+- **Issue**: CapWGS_PP.sh passed 5 arguments but `sc_from_chunks.sh` only expected 4
+- **Root cause**: SC_OUTPUTS_DIR was incorrectly passed as 4th argument, overwriting SCRIPTS_DIR
+- **Impact**: Would cause "script not found" errors when calling `extract_sc_array.sh`
+- **Fix**: Removed SC_OUTPUTS_DIR from arguments (extract_sc_array.sh determines output location automatically)
+- **File**: `CapWGS_PP.sh` line 228
+
+**2. markdup_bqsr.sh Reference Path Handling**
+- **Issue**: Script expected directory but received FASTA file path from CapWGS_PP.sh
+- **Root cause**: Inconsistent reference parameter handling between scripts
+- **Impact**: Would fail to find reference genome and known sites for BQSR
+- **Fix**: Added logic to detect if input is file or directory, handle both cases consistently
+- **File**: `scripts/CapWGS/markdup_bqsr.sh`
+
+**3. BWA Index Discovery in PP_array.sh**
+- **Issue**: Hardcoded GATK grch38 filename, wouldn't work for other genomes
+- **Impact**: Pipeline would fail for UCSC grch37, C. elegans, or any non-GATK reference
+- **Fix**: Implemented flexible programmatic discovery with multiple fallback locations:
+  - `{dir}/BWAIndex/{basename}.64` (GATK 64-bit index)
+  - `{dir}/BWAIndex/{basename}` (standard index in BWAIndex/)
+  - `{dir}/{basename}.64` (64-bit index in same dir)
+  - `{dir}/{basename}` (standard index in same dir)
+- **Tested**: GATK grch38, UCSC grch37, C. elegans custom reference
+- **File**: `scripts/CapWGS/PP_array.sh`
+
+### Current Job Status (as of Feb 9, 2026 evening)
+
+**Completed:**
+- ✅ K562_mut_accumulation (17 samples, GATK pipeline)
+- ✅ HSC2_bulk coverage (bcftools + grch37)
+- ✅ HSC2_bulk variant (GATK + grch38, GVCF created)
+- ✅ GenotypeGVCFs for HSC2_bulk (job 46224526) - converting GVCF to final VCF
+
+**Running:**
+- 🔄 HSC2_enzyme coverage single cell extraction (job 46221307) - top 80 cells by read count
+- 🔄 HSC2_enzyme variant (job 46240032) - JUST SUBMITTED
+  - Using CapWGS_PP.sh with GATK mode
+  - 17.2B reads
+  - **NEW**: Using `-c 80` to select top 80 cells by read count
+  - All bug fixes applied (BWA index, reference path handling, argument order)
+  - Created submission script: `bin/submit_HSC2_enzyme_variant.sh`
+
+**Pending:**
+- HSC2_enzyme coverage: Bigwig and Lorenz curve generation (awaiting extraction completion)
+- HSC_bulk variant calling (10.7B reads from `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/HSC_bulk*`)
+- HSC_CellGrowth variant calling (1.28B reads from `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/spcHSC_CellGrowth*`)
+- HSC_enzyme variant calling (21.4B reads from `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/spcHSC_enzyme*`)
+
+### Key Technical Improvements
+
+1. **Flexible reference genome handling**: All scripts now handle both directory and FASTA file paths consistently
+2. **Robust BWA index discovery**: Works across GATK, UCSC, and custom reference builds
+3. **User-controlled cell selection**: Can override automatic detection when needed for quality control
+4. **Improved error handling**: Scripts validate inputs and provide clear error messages
+5. **Better documentation**: Submission scripts in `bin/` document all parameters and usage
+
+### Files Modified (Session)
+
+**Main pipelines:**
+- `CapWGS_PP.sh` - Added `-c` parameter, fixed sc_from_chunks.sh argument order
+- `CapWGS_PP_QC_only.sh` - Added `-c` parameter
+- `CapGTA_PP.sh` - Added `-c` parameter
+
+**Supporting scripts:**
+- `scripts/CapWGS/concatenate.sh` - Cell count override logic
+- `scripts/CapGTA/concatenate_gta.sh` - Cell count override logic
+- `scripts/CapWGS/PP_array.sh` - Flexible BWA index discovery
+- `scripts/CapWGS/markdup_bqsr.sh` - Reference path handling
+
+**New files:**
+- `bin/submit_HSC2_enzyme_variant.sh` - Documented submission script for HSC2_enzyme variant
+- `bin/genotype_HSC2_bulk.sh` - GenotypeGVCFs for HSC2_bulk
+
+### Next Steps
+
+1. Monitor HSC2_enzyme variant pipeline (job 46240032) - first test of all bug fixes
+2. Complete HSC2_enzyme coverage pipeline (extract, bigwig, Lorenz)
+3. Process remaining HSC samples for variant benchmarking (HSC_bulk, HSC_CellGrowth, HSC_enzyme)
+4. Merge `2-vcaller_selection` branch to main after successful HSC2_enzyme completion
