@@ -32,14 +32,153 @@ For basic bioinformatics tools like `samtools`, `bcftools`, `GATK`, `picard`, `d
 
 I perform analysis of this data using a python package I am developing called [`cellspec`](https://github.com/harrispopgen/cellspec), which is installed in this environment. I do all of this analysis in jupyter notebooks found in `notebooks`, and save my results to `results`. 
 
+**Commonly used reference genomes**:
+
+When processing human data for variant calling, I typically use grch38:
+`/shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta`
+BWA index located here:
+`/shared/biodata/reference/GATK/hg38/BWAindex`
+
+When processing human data for evaluating coverage uniformity, I typically use grch37:
+`/shared/biodata/reference/iGenomes/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa`
+
+For c elegans data, I use a bristol N2 strain specific reference I have downloaded and built indices for here:
+`data/reference/worm_GCA_028201515.1_combined` (`STARIndex/` for CapGTA, `BWAIndex/` for bulk WGS)
+
 ### Current tasks
 
 **quick fixes:**
 
-1. `SLURM_outs` and `SLURM_outs/array_outs/` is becoming very full. I need to delete some of the older outputs, but retain recent ones (from within the last 90 days) for debugging.
-
-2. The package I am developing, `cellspec` now handles making anndata objects from joint calling vcf outputs, so I no longer need the main pipelines here to produce those outputs. CapWGS_PP.sh should only produce the joint calling vcf, and CapGTA_PP.sh only needs to produce the joint calling vcf and the rna counts matrices. 
-
 **Bigger jobs**
 
 1. In `scripts/bulk/` directory, you'll notice there are scripts to perform joint calling with bcftools (less rigorous) or following the GATK best practices. I would like to implement the ability to perform variant calling with either of these tools in `CapWGS_PP.sh` and `CapGTA_PP.sh`. I often use bcftools for shallower pilot runs where I can tolerate imprecise variant calling, but prefer GATK for deeper runs. It is most important that `CapWGS_PP.sh` implements the GATK best practices, including marking duplicates. You can read about GATK best practices for data preprocessing [here](https://gatk.broadinstitute.org/hc/en-us/articles/360035535912-Data-pre-processing-for-variant-discovery) and for germline SNP calling [here](https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels) (I follow the germline best practices becuase even though these are technically somatic variants we are calling, becuase it is single cell data it resembles germline discovery more)
+
+
+**Data to process**
+1. I have bulk WGS fastqs that need to be processed using `scripts/bulk/gatk_pipeline.sh`. This a 4 billion read version of K562_mut_accumulation_pilot. Fastq's are located in `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/MutationAccumulationHuman`. Samples are named `AAVS_Clone_[4-6]_P[1-3]` or `PolE_Clone_[4-6]_P[1-3]`. PolE_Clone_5 does not have a P3, so there are 34 fastq's corresponding to 17 total samples. Run `scripts/bulk/gatk_pipeline.sh` and put individual bam files in `data/K562_mut_accumulation/bams/` and individual .g.vcf files in `data/K562_mut_accumulation/gvcfs/`. Output the final joint calling vcf to `data/K562_mut_accumulation/`. Use grch38 for alignment and variant calling `/shared/biodata/reference/GATK/hg38/Homo_sapiens_assembly38.fasta`
+
+2. There are several sequencing runs of HSC's, both CapWGS and bulk WGS, that need to be processed. This is for the benchmarking portion of th paper. We are using the same datasets to benchmark coverage and variant calling. The data is processed with `CapWGS_PP_QC_only.sh` and the UCSC grch37 reference (see above) for coverage benchmarking, and `CapWGS_PP.sh ` using our new GATK best practices calling mode and the GATK grch38 reference (see above). Bulk samples are included for comparison, and should be processed with the bulk pipeline (for benchmarking coverage, use `scripts/bulk/bcftools_align_single.sh`, for variant benchmakring use the GATK pipeline we adjusted in `scripts/bulk/`). Below is a list of the samples, and checkmarks indicate whether or not they've been processed for both benchmarking_coverage and benchmarking_variant. For each, I have provided a directory where you can find the raw fastq's. All of these have a corresponding folder in `data/` and `results/`
+
+    * benchmarking_coverage
+        - [ ] HSC2_bulk : `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/HSC2_bulk_single_cell/HSC2_bulk_rep*` (2 replicates to process separately, multiple lanes each)
+        - [ ] HSC2_enzyme : `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/HSC2_bulk_single_cell/HSC2_bigSPC_mMDA_PTA_*` (multiple lanes)
+        - [x] HSC_bulk
+        - [x] HSC_CellGrowth
+        - [x] HSC_enzyme
+        - [x] public
+    * benchmarking_variant
+        - [ ] HSC2_bulk : `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/HSC2_bulk_single_cell/HSC2_bulk_rep*` (2 replicates to process separately, multiple lanes each)
+        - [ ] HSC2_enzyme : `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/HSC2_bulk_single_cell/HSC2_bigSPC_mMDA_PTA_*` (multiple lanes)
+        - [ ] HSC_bulk : `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/HSC_bulk*` (multiple lanes)
+        - [ ] HSC_CellGrowth : `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/spcHSC_CellGrowth*` (multiple lanes)
+        - [ ] HSC_enzyme : `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/spcHSC_enzyme*` (multiple lanes)
+
+Read counts for samples in `/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/HSC2_bulk_single_cell/`:
+    Sample	Reads
+    HSC2_bigSPC_mMDA_PTA	17202550439
+    HSC2_bulk_rep1	66530138
+    HSC2_bulk_rep2	10083006
+
+Read counts for samples in `/fh/working/srivatsan_s/CapWGS/HSC_bulk_single_cell/`:
+    Sample	Reads
+    spcHSC_CellGrowth	10654389129
+    spcHSC_enzyme	21433544624
+    HSC_bulk	1283653389
+---
+
+## Recent Session Summary (Feb 6-9, 2026)
+
+### Completed Fixes and Implementations
+
+**1. Variant Caller Selection (Issue #2)**
+- Implemented `-v/--variant-caller` parameter in `CapWGS_PP.sh` to select between bcftools (default) and gatk
+- GATK mode follows best practices: mark duplicates (Picard) + BQSR + HaplotypeCaller in GVCF mode
+- Created supporting scripts:
+  - `scripts/CapWGS/markdup_bqsr.sh`: Preprocessing bulk BAM with mark duplicates and BQSR
+  - `scripts/CapWGS/sc_from_bam.sh` + `extract_sc_from_bam_array.sh`: Extract single cells from preprocessed BAM
+  - `scripts/CapWGS/sc_var_array_gatk.sh`: GATK HaplotypeCaller for single cells
+  - `scripts/CapWGS/sc_var_array_bcftools.sh`: BCFtools variant calling for single cells
+  - `scripts/CapWGS/bcftools_joint_calling.sh`: Merge BCFtools VCFs
+  - `scripts/utils/detect_known_sites.sh`: Auto-detect dbSNP and known indels in bundle/ subdirectory
+
+**2. Read Group Addition**
+- Fixed GATK BQSR error: "Number of read groups must be >= 1, but is 0"
+- Added read groups to BWA alignments with `-R` flag in:
+  - `scripts/CapWGS/PP_array.sh` (passes SAMPLE_NAME parameter)
+  - `scripts/bulk/gatk_single_sample.sh` (new single-sample GATK pipeline)
+  - `bin/HSC2_bulk_variant.sh` (standalone HSC2 bulk variant script)
+- Each read group includes: ID, SM (sample), PL (ILLUMINA), LB (library)
+
+**3. Script Path Fixes for Directory Reorganization**
+- Fixed 7 script path references to match CapWGS/ and CapWGS_QC/ directory structure:
+  - `sc_from_chunks.sh`: extract_sc_array.sh → utils/extract_sc_array.sh
+  - `submit_bigwig_lorenz.sh`: generate_bigwig_and_lorenz_array.sh → CapWGS_QC/
+  - `submit_joint_calling.sh`: joint_calling_array.sh → CapWGS/ (2 occurrences)
+  - `submit_benchmarking_qc.sh`: benchmarking_qc_array.sh → CapWGS_QC/
+  - `generate_bigwig_and_lorenz_array.sh`: lorenz.py → CapWGS_QC/
+  - `coverage_tracks.sh`: coverage_tracks.py → CapWGS_QC/
+  - `binned_coverage_array.sh`: binned_coverage.py → CapWGS_QC/
+
+**4. Pipeline Path Handling**
+- Fixed `CapWGS_PP.sh` and `CapWGS_PP_QC_only.sh` to handle nested output paths
+- Added `SAMPLE_NAME=$(basename "${OUTPUT_NAME}")` to support directory structures like `benchmarking_coverage/HSC2_enzyme`
+
+**5. Bulk GATK Pipeline Improvements**
+- Updated `scripts/bulk/gatk_align_call_array.sh` to use detect_known_sites.sh utility
+- Fixed sample list generation to preserve individual passages (not merge them)
+- Increased walltime from 24 hours to 3 days for large datasets
+- Added SCRIPTS_ROOT parameter for proper path resolution in SLURM jobs
+- Created `scripts/bulk/gatk_single_sample.sh` for single-sample GATK processing (produces final VCF, not GVCF)
+
+**6. PP_array.sh BWA Index Fix**
+- Modified `scripts/CapWGS/PP_array.sh` to handle both directory and FASTA file paths for genome parameter
+- Automatically detects if genome is a directory or file and constructs BWA index path accordingly
+
+### Current Job Status (as of Feb 9, 2026)
+
+**K562 Mutation Accumulation (Bulk GATK):**
+- ✅ Jobs completed successfully (46110750, 46110773)
+- 17 samples processed with GATK best practices
+- Location: `data/K562_mut_accumulation/`
+
+**HSC2 Benchmarking Data:**
+
+1. **HSC2_bulk coverage** (bcftools)
+   - ✅ COMPLETED (job 46114040, 2h 4m)
+   - Output: `data/benchmarking_coverage/HSC2_bulk/HSC2_bulk.bam`
+
+2. **HSC2_bulk variant** (GATK)
+   - ✅ COMPLETED (job 46157680, 14h 15m)
+   - Output: `data/benchmarking_variant/HSC2_bulk/gvcfs/HSC2_bulk.g.vcf.gz` (4.4GB)
+   - Note: GVCF created; need to run GenotypeGVCFs for final VCF
+
+3. **HSC2_enzyme coverage** (CapWGS QC-only, 17B reads)
+   - 🔄 IN PROGRESS - Resubmitted with fixes
+   - Bulk BAM completed: `data/benchmarking_coverage/HSC2_enzyme/HSC2_enzyme.bam` (408GB)
+   - Currently extracting top 80 single cells (job 46221307)
+   - Pending: Bigwig and Lorenz curve generation
+
+4. **HSC2_enzyme variant** (CapWGS + GATK, 17B reads)
+   - ❌ FAILED - All 501 preprocessing tasks failed
+   - Issue: BWA index path problem when passing FASTA file instead of directory
+   - PP_array.sh fix has been implemented
+   - **TODO**: Clean up and resubmit with corrected paths
+
+**Remaining Benchmarking Data to Process:**
+- HSC_bulk (variant only)
+- HSC_CellGrowth (variant only)
+- HSC_enzyme (variant only)
+
+### Known Issues and Next Steps
+
+1. **HSC2_enzyme variant pipeline** needs resubmission after PP_array.sh BWA index fix
+2. **HSC2_bulk GVCF** needs GenotypeGVCFs step to produce final VCF (can use new `gatk_single_sample.sh` approach in future)
+3. **HSC2_enzyme coverage** awaiting single cell extraction completion, then submit bigwig/Lorenz generation
+4. Process remaining HSC samples for variant benchmarking using `CapWGS_PP.sh -v gatk`
+
+### Git Commits on Branch `2-vcaller_selection`
+
+- `6e9da20` Fix script paths for reorganized directory structure
+- `2a5f62d` Implement variant caller selection for CapWGS pipeline (#2)
+- `9783ccb` Add read groups to BWA alignments for GATK compatibility
+- Earlier commits: Remove AnnData generation, fix BAM paths, etc.
