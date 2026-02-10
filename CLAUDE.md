@@ -292,3 +292,83 @@ sbatch CapWGS_PP.sh -o sample_name -1 R1.fq.gz -2 R2.fq.gz -g ref.fa -r 1000000 
 2. Complete HSC2_enzyme coverage pipeline (extract, bigwig, Lorenz)
 3. Process remaining HSC samples for variant benchmarking (HSC_bulk, HSC_CellGrowth, HSC_enzyme)
 4. Merge `2-vcaller_selection` branch to main after successful HSC2_enzyme completion
+
+---
+
+## Session Update (Feb 10, 2026)
+
+### QC Pipeline Output Location Fix
+
+**Issue Discovered:**
+- Single cell BAMs from QC-only pipeline were extracted to temp directory and never moved to permanent data location
+- `data/benchmarking_coverage/HSC2_enzyme/sc_outputs/` was empty despite job completion
+- All outputs remained in `/hpc/temp/` which could be cleaned up
+
+**Root Cause:**
+- `extract_sc_array.sh` always created output in temp directory based on input file location
+- `CapWGS_PP_QC_only.sh` had incorrect argument order when calling `sc_from_chunks.sh`
+- No mechanism to specify final output directory
+
+**Fix Implemented:**
+- Added optional `output_dir` parameter to `extract_sc_array.sh` (3rd argument)
+- Added optional `output_dir` parameter to `sc_from_chunks.sh` (5th argument)
+- Fixed `CapWGS_PP_QC_only.sh` to pass `SC_OUTPUTS_DIR` as 5th argument (was 4th)
+- Single cell BAMs now extracted directly to `data/{sample}/sc_outputs/`
+- Bigwig and Lorenz outputs generated in same permanent location
+- Backward compatible - defaults to temp if output directory not specified
+
+**Immediate Actions Taken:**
+1. Manually copied 80 BAM files from temp to `data/benchmarking_coverage/HSC2_enzyme/sc_outputs/` (325MB)
+2. Applied fixes to ensure future runs output directly to data directory
+3. Submitted bigwig/Lorenz generation job (46292154) using BAMs in permanent location
+
+### Current Job Status (as of Feb 10, 2026)
+
+**Completed:**
+- ✅ K562_mut_accumulation (17 samples, GATK pipeline)
+- ✅ HSC2_bulk coverage (bcftools + grch37)
+- ✅ HSC2_bulk variant (GATK + grch38, final VCF created via GenotypeGVCFs)
+- ✅ HSC2_enzyme coverage single cell extraction (80 cells) - BAMs now in data directory
+
+**Running:**
+- 🔄 HSC2_enzyme coverage bigwig/Lorenz generation (job 46292154) - JUST SUBMITTED
+  - Processing 80 cells from `data/benchmarking_coverage/HSC2_enzyme/sc_outputs/`
+  - Will generate bigwig coverage tracks and Lorenz curves
+  - Output location: Same directory as BAMs
+- 🔄 HSC2_enzyme variant (job 46240032) - In progress (14+ hours)
+  - Currently: Splitting 17.2B reads into 500 chunks
+  - Progress: 356/500 chunks created (71%)
+  - Using all bug fixes: BWA index discovery, reference path handling, argument order
+  - Using `-c 80` for cell selection
+
+**Pending:**
+- HSC_bulk variant calling
+- HSC_CellGrowth variant calling
+- HSC_enzyme variant calling
+
+### Files Modified (Latest Session)
+
+**QC pipeline fixes:**
+- `scripts/utils/extract_sc_array.sh` - Added optional output directory parameter
+- `scripts/CapWGS/sc_from_chunks.sh` - Added optional output directory parameter and conditional logic
+- `CapWGS_PP_QC_only.sh` - Fixed argument order (SC_OUTPUTS_DIR now 5th parameter)
+
+### Git Commits (Latest)
+
+- `73174d0` Fix QC pipeline to output single cell BAMs directly to data directory
+- `4a50cbe` Update CLAUDE.md with Feb 9 session summary
+- `6401559` Update CLAUDE.md with session summary
+- `e4d905d` Fix critical bugs in CapWGS pipeline
+- `e34641a` Add optional -c/--cell-count parameter
+
+### Technical Notes
+
+**QC Pipeline Workflow (Fixed):**
+1. Preprocessing: Trim and align chunks → temp SAM files
+2. Concatenation: Merge chunks → bulk BAM in `data/{sample}/`
+3. Cell detection: Generate readcounts, knee plot, real_cells.txt
+4. **Single cell extraction**: Extract BAMs directly to `data/{sample}/sc_outputs/` (FIXED)
+5. **Bigwig/Lorenz**: Generate coverage tracks in `data/{sample}/sc_outputs/` (FIXED)
+
+**Key Improvement:**
+All QC outputs now stay in permanent data directory. Temp directory only contains intermediate preprocessing files that are safely deletable after pipeline completion.
