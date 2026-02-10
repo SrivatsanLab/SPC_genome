@@ -190,7 +190,7 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 #### Extract single cells for QC
 
 # This job extracts reads for each detected cell from the chunked SAM files and outputs to sc_outputs/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SCRIPTS_DIR}" "${SC_OUTPUTS_DIR}")
 
 echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
 
