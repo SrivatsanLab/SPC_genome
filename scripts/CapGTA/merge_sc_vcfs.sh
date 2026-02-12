@@ -23,7 +23,7 @@ echo "Output VCF: ${output_vcf}"
 echo ""
 
 # Get list of all VCF files
-vcf_files=(${sc_vcf_dir}/*_variants.vcf.gz)
+vcf_files=(${sc_vcf_dir}/*.g.vcf.gz)
 
 echo "Found ${#vcf_files[@]} VCF files"
 echo ""
@@ -38,7 +38,7 @@ reheadered_vcfs=()
 for vcf in "${vcf_files[@]}"; do
     # Extract barcode from filename
     filename=$(basename "$vcf")
-    barcode="${filename%_variants.vcf.gz}"
+    barcode="${filename%.g.vcf.gz}"
 
     # Create reheadered VCF with barcode as sample name
     tmp_vcf="${tmp_dir}/${filename}"

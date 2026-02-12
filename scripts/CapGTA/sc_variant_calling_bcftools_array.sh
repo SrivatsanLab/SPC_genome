@@ -22,7 +22,7 @@ barcode=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$barcode_file")
 
 # Input/output files
 BAM_FILE="${sc_bam_dir}/${barcode}_dna.bam"
-OUTPUT_VCF="${output_dir}/${barcode}_variants.vcf.gz"
+OUTPUT_VCF="${output_dir}/${barcode}.g.vcf.gz"
 
 # Verify inputs
 if [ ! -f "${BAM_FILE}" ]; then
@@ -52,7 +52,7 @@ echo ""
 # Step 1: Generate mpileup and call variants
 echo "Running bcftools mpileup and call..."
 
-TMP_VCF="${OUTPUT_VCF%.vcf.gz}_raw.vcf.gz"
+TMP_VCF="${OUTPUT_VCF%.g.vcf.gz}_raw.g.vcf.gz"
 
 bcftools mpileup \
     --threads 2 \
@@ -64,6 +64,7 @@ bcftools call \
     --threads 2 \
     -m \
     -A \
+    --gvcf 1 \
     -O z \
     -o "${TMP_VCF}"
 
