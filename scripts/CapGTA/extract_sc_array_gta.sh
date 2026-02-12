@@ -30,14 +30,16 @@ rna_bam="${sc_output_dir}/${barcode}_${chunk}_rna.bam"
 
 # Extract DNA reads for this barcode
 if [ -f "${dna_sam}" ]; then
-    samtools view -h "${dna_sam}" | grep -E "^@|CB:Z:${barcode}" | samtools view -b -o "${dna_bam}"
+    samtools view -h "${dna_sam}" | grep -E "^@|CB:Z:${barcode}" | samtools sort -o "${dna_bam}"
+    samtools index "${dna_bam}"
 else
     echo "Warning: DNA SAM file not found: ${dna_sam}"
 fi
 
 # Extract RNA reads for this barcode
 if [ -f "${rna_sam}" ]; then
-    samtools view -h "${rna_sam}" | grep -E "^@|CB:Z:${barcode}" | samtools view -b -o "${rna_bam}"
+    samtools view -h "${rna_sam}" | grep -E "^@|CB:Z:${barcode}" | samtools sort -o "${rna_bam}"
+    samtools index "${rna_bam}"
 else
     echo "Warning: RNA SAM file not found: ${rna_sam}"
 fi
