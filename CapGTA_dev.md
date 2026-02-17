@@ -94,4 +94,71 @@ All jobs submitted with:
 - `bin/submit_worm_big_run.sh` (not tracked in git)
 
 ### Related Issues
-- Issue #3: BCFtools variant calling should use gVCF mode across all pipelines (CapGTA, CapWGS, Bulk) 
+- Issue #3: BCFtools variant calling should use gVCF mode across all pipelines (CapGTA, CapWGS, Bulk)
+
+---
+
+## Session Summary (Feb 17, 2026)
+
+### Problem Diagnosed
+
+**Job Explosion Causing SLURM Failures**
+- Resubmitted jobs (46407150-153) completed with exit code 0, but `sc_outputs/` directories were empty
+- Investigation revealed single cells were extracted to temp but never merged or copied to final location
+- Root cause: `sc_from_chunks_gta.sh` hit SLURM's QOSMaxSubmitJobPerUserLimit
+  - 500 chunks × 1000 cells = 500,000 array tasks submitted
+  - SLURM limit: ~50,000 jobs per user
+  - Result: Some job submissions failed, creating malformed dependency strings
+  - All downstream jobs (merge, copy, variant calling, RNA counting) failed with "Job dependency problem"
+
+### Solution Implemented
+
+**Consolidated Single-Cell Extraction (Addresses Issue #4)**
+
+Created unified extraction utilities in `scripts/utils/`:
+- `extract_sc_from_bam_array.sh`: Core array job for extracting cells from bulk BAMs
+  - Accepts optional suffix parameter for dual-output pipelines (e.g., "_dna", "_rna")
+  - Uses `samtools sort` to ensure coordinate-sorted output
+  - 24-hour timeout for large NovaSeq runs
+- `sc_from_bam.sh`: Generic wrapper for submitting extraction jobs
+
+**CapGTA-Specific Changes:**
+- Created `scripts/CapGTA/sc_from_bam_gta.sh`: Orchestrates dual extraction (DNA + RNA) from bulk BAMs
+  - Replaces chunk-based approach with bulk BAM extraction
+  - Submits downstream variant calling and RNA counting jobs
+- Updated `CapGTA_PP.sh` to use new bulk BAM extraction approach
+  - Extracts from `data/{sample}/{sample}_dna.bam` and `data/{sample}/{sample}_rna.bam`
+  - No longer processes per-chunk SAM files
+
+**Impact:**
+- Task count reduced: 500,000 → 2,000 array tasks (1000 DNA + 1000 RNA)
+- Eliminates SLURM job submission failures
+- Also updated CapWGS_PP.sh and CapWGS_PP_QC_only.sh to use unified utilities
+
+### Jobs Resubmitted
+
+Cleaned up temp `sc_outputs/` directories and manually resubmitted extraction for all 4 samples:
+- UDI_5: Job 47693348 → spawned jobs 47693376-47693380
+- UDI_6: Job 47694133
+- UDI_7: Job 47694134
+- UDI_8: Job 47694140
+
+Each wrapper job submits:
+1. DNA extraction array (1000 tasks)
+2. RNA extraction array (1000 tasks)
+3. Variant calling array (1000 tasks, depends on DNA extraction)
+4. VCF merge job (depends on variant calling)
+5. RNA count matrix job (depends on RNA extraction)
+
+### Files Modified
+- Created: `scripts/utils/extract_sc_from_bam_array.sh`
+- Created: `scripts/utils/sc_from_bam.sh`
+- Created: `scripts/CapGTA/sc_from_bam_gta.sh`
+- Modified: `CapGTA_PP.sh`
+- Modified: `CapWGS_PP.sh`
+- Modified: `CapWGS_PP_QC_only.sh`
+
+### Commits
+- Merged `2-vcaller_selection` branch into main
+- Merged `CapGTA_dev` branch into main
+- Commit fd4da94: "Consolidate single-cell extraction into unified utilities (fixes #4)" 
