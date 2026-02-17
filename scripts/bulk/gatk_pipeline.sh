@@ -12,11 +12,11 @@
 set -euo pipefail
 
 # Configuration
-FASTQ_DIR="/fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV"
-OUTPUT_DIR="data/bulk_spectra"
+FASTQ_DIR="/fh/fast/srivatsan_s/SR/ngs/illumina/sanjay/20260130_LH00740_0176_A23F3HLLT4/Unaligned/MutationAccumulationHuman"
+OUTPUT_DIR="data/K562_mut_accumulation"
 REFERENCE_DIR="/shared/biodata/reference/GATK/hg38"
 TMP_BASE_DIR="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
-COHORT_NAME="AAVS_PolE_clones"
+COHORT_NAME="K562_mut_accumulation"
 
 # Script paths
 SCRIPT_DIR="scripts/bulk"
@@ -91,7 +91,8 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     "${FASTQ_DIR}" \
     "${OUTPUT_DIR}" \
     "${REFERENCE_DIR}" \
-    "${TMP_BASE_DIR}")
+    "${TMP_BASE_DIR}" \
+    ".")
 
 echo "Array job submitted: ${ARRAY_JOB_ID}"
 echo ""

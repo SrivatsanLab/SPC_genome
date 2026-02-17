@@ -17,6 +17,7 @@ TMP_dir="$2"
 ALIGNED_DIR="$3"  # Directory for aligned BAM/SAM files (data/[experiment]/aligned/)
 BIN_DIR="$4"      # Directory for metadata files (bin/[experiment]/)
 SCRIPTS_DIR="$5"
+CELL_COUNT="${6:-}"  # Optional: user-provided cell count override
 
 ls $TMP_dir/*.sam > "${BIN_DIR}/sam_list.txt"
 
@@ -32,8 +33,31 @@ samtools merge -@ 4 -b "${BIN_DIR}/sam_list.txt" -O SAM - | samtools sort -@ 4 -
 echo "Indexing BAM file..."
 samtools index -@ 4 "${BAM_FILE}"
 
-echo "Creating knee plot and detecting real cells..."
+echo "Computing read counts per barcode..."
 
 samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${BIN_DIR}/readcounts.csv"
 
-cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+if [ -n "${CELL_COUNT}" ]; then
+    # User provided cell count - select top N cells by read count
+    echo "Using user-provided cell count: ${CELL_COUNT}"
+    echo "Selecting top ${CELL_COUNT} cells by read count..."
+
+    # Still generate knee plot for QC purposes
+    cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > /dev/null || true
+
+    # Select top N cells
+    tail -n +2 "${BIN_DIR}/readcounts.csv" | \
+        sort -t',' -k2 -nr | \
+        head -${CELL_COUNT} | \
+        cut -d',' -f1 > "${BIN_DIR}/real_cells.txt"
+else
+    # Use automatic cell detection via knee plot
+    echo "Using automatic cell detection (knee plot)..."
+    cat "${BIN_DIR}/readcounts.csv" | \
+        python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" \
+        --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+fi
+
+# Print result
+cell_count=$(wc -l < "${BIN_DIR}/real_cells.txt")
+echo "Selected ${cell_count} cells"

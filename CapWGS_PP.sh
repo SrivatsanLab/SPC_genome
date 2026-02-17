@@ -34,6 +34,7 @@ if [ -f "$CONFIG_FILE" ]; then
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
     TMP_DIR_BASE="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
     REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/reference/GATK/hg38}"
+    VARIANT_CALLER="${CONFIG_variant_caller:-bcftools}"
     READ1="${CONFIG_data_read1}"
     READ2="${CONFIG_data_read2}"
     READ_COUNT="${CONFIG_data_read_count}"
@@ -44,6 +45,7 @@ else
     N_CHUNKS=500
     TMP_DIR_BASE="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
     REFERENCE_GENOME="/shared/biodata/reference/GATK/hg38"
+    VARIANT_CALLER="bcftools"
 fi
 
 # Function to display help message
@@ -65,6 +67,10 @@ Optional arguments:
   -s    <scripts_DIR>           Path to the SPC_genome directory (default: from config.yaml or .)
   -n    <N_CHUNKS>              Number of subjobs for SLURM arrays (default: from config.yaml or 500)
   -t    <TMP_DIR>               Temp directory for fastq chunks (default: from config.yaml or /hpc/temp/srivatsan_s/SPC_genome_preprocessing/{sample}/)
+  -c    <cell_count>            Override automatic cell detection - select top N cells by read count (optional)
+  -v    <variant_caller>        Variant caller: bcftools or gatk (default: from config.yaml or bcftools)
+                                  bcftools: Faster, suitable for shallow pilot runs
+                                  gatk: More rigorous, follows GATK best practices (includes mark duplicates and BQSR)
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -78,7 +84,7 @@ EOF
 }
 
 # Parse command-line options (these override config.yaml values)
-while getopts ":o:1:2:g:r:s:n:t:h" option; do
+while getopts ":o:1:2:g:r:s:n:t:c:v:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
@@ -88,6 +94,8 @@ while getopts ":o:1:2:g:r:s:n:t:h" option; do
     s) SCRIPTS_DIR=$OPTARG ;;
 	n) N_CHUNKS=$OPTARG ;;
 	t) TMP_DIR_BASE=$OPTARG ;;
+	c) CELL_COUNT=$OPTARG ;;
+	v) VARIANT_CALLER=$OPTARG ;;
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
     :) echo "Option -$OPTARG requires an argument." >&2; show_help; exit 1 ;;
@@ -101,11 +109,24 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     exit 1
 fi
 
+# Set default for CELL_COUNT if not provided
+CELL_COUNT="${CELL_COUNT:-}"
+
+# Validate variant caller option
+if [ "$VARIANT_CALLER" != "bcftools" ] && [ "$VARIANT_CALLER" != "gatk" ]; then
+    echo "Error: Invalid variant caller '${VARIANT_CALLER}'. Must be 'bcftools' or 'gatk'." >&2
+    show_help
+    exit 1
+fi
+
+# Extract sample name from output path (handles paths like "benchmarking_coverage/HSC2_enzyme")
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+
 # Set up sample-specific directory structure
 DATA_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}"
 SC_OUTPUTS_DIR="${DATA_DIR}/sc_outputs"
 RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
-TMP_DIR="${TMP_DIR_BASE}/${OUTPUT_NAME}"
+TMP_DIR="${TMP_DIR_BASE}/${SAMPLE_NAME}"
 
 # Create necessary directories
 mkdir -p "${DATA_DIR}"
@@ -122,6 +143,7 @@ echo "Read 1: ${READ1}"
 echo "Read 2: ${READ2}"
 echo "Read Count: ${READ_COUNT}"
 echo "Reference Genome: ${REFERENCE_GENOME}"
+echo "Variant Caller: ${VARIANT_CALLER}"
 echo ""
 echo "Scripts Directory: ${SCRIPTS_DIR}"
 echo "Data Directory: ${DATA_DIR}"
@@ -160,24 +182,53 @@ chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
 ######################################################################################################
 #### Submit First Job array
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${CELL_COUNT}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
+#### Preprocessing for GATK mode (mark duplicates and BQSR)
+
+if [ "$VARIANT_CALLER" = "gatk" ]; then
+    # Run mark duplicates and BQSR on bulk BAM before extracting single cells
+    # This follows GATK best practices
+    markdup_bqsr_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/markdup_bqsr.sh" "${DATA_DIR}/${SAMPLE_NAME}.bam" "${DATA_DIR}" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}")
+
+    echo "Mark duplicates and BQSR job ID: ${markdup_bqsr_job_ID}"
+
+    # Set dependency for next step
+    preprocessing_dependency=$markdup_bqsr_job_ID
+else
+    # No preprocessing needed for bcftools mode
+    preprocessing_dependency=$concat_job_ID
+fi
+
+######################################################################################################
 #### Submit single cell extraction arrays
 
-# This job extracts reads for each detected cell from the chunked SAM files and outputs to sc_outputs/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+# For GATK mode: extract from preprocessed bulk BAM
+# For bcftools mode: extract from chunked SAM files
+if [ "$VARIANT_CALLER" = "gatk" ]; then
+    # Use the preprocessed BAM (symlink created by markdup_bqsr.sh)
+    PREPROCESSED_BAM="${DATA_DIR}/${SAMPLE_NAME}.preprocessed.bam"
 
-echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
+    # Extract single cells from preprocessed bulk BAM
+    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_bam.sh" "${PREPROCESSED_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+
+    echo "Single cell extraction (from bulk BAM) job ID: ${sc_extraction_job_ID}"
+else
+    # Extract single cells from chunked SAM files (original method)
+    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+
+    echo "Single cell extraction (from chunks) job ID: ${sc_extraction_job_ID}"
+fi
 
 ######################################################################################################
 #### Submit single cell variant calling array
@@ -185,9 +236,9 @@ echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
 # This wrapper script will:
 # 1. Read real_cells.txt to determine how many cells were detected
 # 2. Submit the variant calling array job with the correct array size
-# It runs after sc_from_chunks completes
+# It runs after single cell extraction completes
 
-submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$sc_extraction_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
 
 echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 
@@ -195,10 +246,12 @@ echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 #### Joint calling
 
 # This wrapper script will:
-# 1. Generate genomic intervals for parallelization
-# 2. Create barcodes.map from VCF files
-# 3. Submit joint calling array job (GenomicsDBImport + GenotypeGVCFs per interval)
+# 1. Generate genomic intervals for parallelization (GATK mode)
+# 2. Create barcodes.map from VCF/GVCF files
+# 3. Submit joint calling array job
+#    - GATK mode: GenomicsDBImport + GenotypeGVCFs per interval
+#    - BCFtools mode: bcftools merge + normalize
 
-submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${OUTPUT_NAME}")
+submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}")
 
 echo "Joint calling submission job ID: ${submit_jc_job_ID}"

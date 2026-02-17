@@ -21,6 +21,7 @@ chunk_indices="$1"
 genome="$2"
 scripts_DIR="$3"
 TMP_DIR="$4"
+SAMPLE_NAME="$5"
 
 barcodes="${scripts_DIR}/barcodes"
 demux_scr="${scripts_DIR}/scripts/utils/atrandi_demux.py"
@@ -69,14 +70,62 @@ READ2="${TMP_DIR}/corr_read2_chunk_${chunk}_val_2.fq.gz"
 
 module load BWA
 
-# Construct BWA index path
-BWA_INDEX="${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
+# Construct BWA index path - flexible for any genome
+if [ -f "${genome}" ]; then
+    # genome is a FASTA file path
+    GENOME_DIR=$(dirname "${genome}")
+    GENOME_BASE=$(basename "${genome}")
+
+    # Try to find BWA index in BWAIndex subdirectory first, then same directory
+    # Check for both 64-bit (.64 suffix) and standard indexes
+    if [ -f "${GENOME_DIR}/BWAIndex/${GENOME_BASE}.64.amb" ]; then
+        BWA_INDEX="${GENOME_DIR}/BWAIndex/${GENOME_BASE}.64"
+    elif [ -f "${GENOME_DIR}/BWAIndex/${GENOME_BASE}.amb" ]; then
+        BWA_INDEX="${GENOME_DIR}/BWAIndex/${GENOME_BASE}"
+    elif [ -f "${GENOME_DIR}/${GENOME_BASE}.64.amb" ]; then
+        BWA_INDEX="${GENOME_DIR}/${GENOME_BASE}.64"
+    elif [ -f "${GENOME_DIR}/${GENOME_BASE}.amb" ]; then
+        BWA_INDEX="${GENOME_DIR}/${GENOME_BASE}"
+    else
+        echo "Error: Could not find BWA index for ${genome}"
+        echo "Tried:"
+        echo "  ${GENOME_DIR}/BWAIndex/${GENOME_BASE}.64"
+        echo "  ${GENOME_DIR}/BWAIndex/${GENOME_BASE}"
+        echo "  ${GENOME_DIR}/${GENOME_BASE}.64"
+        echo "  ${GENOME_DIR}/${GENOME_BASE}"
+        exit 1
+    fi
+elif [ -d "${genome}" ]; then
+    # genome is a directory, look for index files in expected locations
+    if [ -f "${genome}/BWAIndex/genome.fa.amb" ]; then
+        # UCSC iGenomes structure
+        BWA_INDEX="${genome}/BWAIndex/genome.fa"
+    elif [ -f "${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64.amb" ]; then
+        # GATK bundle structure
+        BWA_INDEX="${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
+    elif [ -f "${genome}/genome.fa.amb" ]; then
+        # UCSC genome.fa in root directory
+        BWA_INDEX="${genome}/genome.fa"
+    else
+        echo "Error: Could not find BWA index in directory ${genome}"
+        echo "Tried:"
+        echo "  ${genome}/BWAIndex/genome.fa"
+        echo "  ${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
+        echo "  ${genome}/genome.fa"
+        exit 1
+    fi
+else
+    echo "Error: Genome parameter is neither a file nor directory: ${genome}"
+    exit 1
+fi
 
 # Output file name
 SAM_FILE="${TMP_DIR}/${chunk}.sam"
 
 echo "Aligning with BWA-MEM"
-bwa mem -t 4 -c 1 -C -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
+# Add read group for GATK compatibility
+RG="@RG\tID:${SAMPLE_NAME}_chunk${chunk}\tSM:${SAMPLE_NAME}\tPL:ILLUMINA\tLB:${SAMPLE_NAME}"
+bwa mem -t 4 -c 1 -C -R "${RG}" -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
 
 # Delete fastq's
 rm "${READ1}" "${READ2}"

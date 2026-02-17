@@ -38,7 +38,7 @@ mkdir -p "${OUTPUT_DIR}"
 # Submit bigwig and Lorenz curve generation array
 bw_lz_ID=$(sbatch --parsable \
     --array=1-${cell_count} \
-    ./scripts/generate_bigwig_and_lorenz_array.sh \
+    ./scripts/CapWGS_QC/generate_bigwig_and_lorenz_array.sh \
     "${REAL_CELLS_FILE}" \
     "${BAM_DIR}" \
     "${OUTPUT_DIR}" \

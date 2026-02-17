@@ -56,6 +56,6 @@ echo "Input: ${BIGWIG_FILE}"
 echo "Output: ${OUTPUT_FILE}"
 
 # Run coverage_tracks.py with provided options
-python scripts/coverage_tracks.py "${BIGWIG_FILE}" -o "${OUTPUT_FILE}" "$@"
+python scripts/CapWGS_QC/coverage_tracks.py "${BIGWIG_FILE}" -o "${OUTPUT_FILE}" "$@"
 
 echo "Complete!"

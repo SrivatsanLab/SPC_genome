@@ -10,6 +10,7 @@ chunk_indices="$1"
 TMP_dir="$2"
 barcode_file="$3"
 scripts_DIR="$4"
+output_dir="${5:-}"  # Optional: explicit output directory for single cell BAMs
 
 # Create an empty string to store job IDs
 job_ids=""
@@ -48,7 +49,11 @@ while IFS= read -r chunk; do
     check_job_limit
 
     # Submit an array job for processing all barcodes in this chunk
-    array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scripts/extract_sc_array.sh" "$sam_file" "$barcode_file")
+    if [ -n "${output_dir}" ]; then
+        array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scripts/utils/extract_sc_array.sh" "$sam_file" "$barcode_file" "${output_dir}")
+    else
+        array_ID=$(sbatch --parsable --array=1-"$cell_count" "${scripts_DIR}/scripts/utils/extract_sc_array.sh" "$sam_file" "$barcode_file")
+    fi
 
     # Add the array job ID to the list of job IDs
     job_ids="$job_ids$array_ID,"

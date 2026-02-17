@@ -65,6 +65,7 @@ Optional arguments:
   -s    <scripts_DIR>           Path to the SPC_genome directory (default: from config.yaml or .)
   -n    <N_CHUNKS>              Number of subjobs for SLURM arrays (default: from config.yaml or 500)
   -t    <TMP_DIR>               Temp directory for fastq chunks (default: from config.yaml or /hpc/temp/srivatsan_s/SPC_genome_preprocessing/{sample}/)
+  -c    <cell_count>            Override automatic cell detection - select top N cells by read count (optional)
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -78,7 +79,7 @@ EOF
 }
 
 # Parse command-line options (these override config.yaml values)
-while getopts ":o:1:2:g:r:s:n:t:h" option; do
+while getopts ":o:1:2:g:r:s:n:t:c:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
@@ -88,6 +89,7 @@ while getopts ":o:1:2:g:r:s:n:t:h" option; do
     s) SCRIPTS_DIR=$OPTARG ;;
 	n) N_CHUNKS=$OPTARG ;;
 	t) TMP_DIR_BASE=$OPTARG ;;
+	c) CELL_COUNT=$OPTARG ;;
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
     :) echo "Option -$OPTARG requires an argument." >&2; show_help; exit 1 ;;
@@ -101,11 +103,17 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     exit 1
 fi
 
+# Set default for CELL_COUNT if not provided
+CELL_COUNT="${CELL_COUNT:-}"
+
+# Extract sample name from output path (handles paths like "benchmarking_coverage/HSC2_enzyme")
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+
 # Set up sample-specific directory structure
 DATA_DIR="${SCRIPTS_DIR}/data/${OUTPUT_NAME}"
 SC_OUTPUTS_DIR="${DATA_DIR}/sc_outputs"
 RESULTS_DIR="${SCRIPTS_DIR}/results/${OUTPUT_NAME}"
-TMP_DIR="${TMP_DIR_BASE}/${OUTPUT_NAME}"
+TMP_DIR="${TMP_DIR_BASE}/${SAMPLE_NAME}"
 
 # Create necessary directories
 mkdir -p "${DATA_DIR}"
@@ -167,14 +175,14 @@ else
     PP_SCRIPT="${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh"
 fi
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${OUTPUT_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${CELL_COUNT}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
@@ -182,7 +190,7 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 #### Extract single cells for QC
 
 # This job extracts reads for each detected cell from the chunked SAM files and outputs to sc_outputs/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SCRIPTS_DIR}" "${SC_OUTPUTS_DIR}")
 
 echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
 
@@ -202,7 +210,7 @@ echo "Pipeline will complete after bigwig and Lorenz curve generation."
 echo "No variant calling will be performed."
 echo ""
 echo "Output locations:"
-echo "  - Bulk BAM: ${DATA_DIR}/${OUTPUT_NAME}.bam"
+echo "  - Bulk BAM: ${DATA_DIR}/${SAMPLE_NAME}.bam"
 echo "  - Knee plot: ${RESULTS_DIR}/kneeplot.png"
 echo "  - Real cells list: ${RESULTS_DIR}/real_cells.txt"
 echo "  - Read counts: ${RESULTS_DIR}/readcounts.csv"

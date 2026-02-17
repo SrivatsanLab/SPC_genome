@@ -18,6 +18,7 @@ TMP_dir="$2"
 ALIGNED_DIR="$3"  # Directory for aligned BAM/SAM files (data/[experiment]/aligned/)
 BIN_DIR="$4"      # Directory for metadata files (bin/[experiment]/)
 SCRIPTS_DIR="$5"
+CELL_COUNT="${6:-}"  # Optional: user-provided cell count override
 
 # Extract just the sample name (basename) for file naming
 SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
@@ -96,11 +97,29 @@ EOF
 # Detect real cells using combined counts
 ###########################################################################################################################
 
-echo "Creating knee plot and detecting real cells using combined DNA+RNA counts..."
+if [ -n "${CELL_COUNT}" ]; then
+    # User provided cell count - select top N cells by read count
+    echo "Using user-provided cell count: ${CELL_COUNT}"
+    echo "Selecting top ${CELL_COUNT} cells by read count..."
 
-cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+    # Still generate knee plot for QC purposes
+    cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > /dev/null || true
 
+    # Select top N cells
+    tail -n +2 "${BIN_DIR}/readcounts.csv" | \
+        sort -t',' -k2 -nr | \
+        head -${CELL_COUNT} | \
+        cut -d',' -f1 > "${BIN_DIR}/real_cells.txt"
+else
+    # Use automatic cell detection via knee plot
+    echo "Using automatic cell detection (knee plot)..."
+    cat "${BIN_DIR}/readcounts.csv" | \
+        python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" \
+        --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
+fi
+
+# Print result
 cell_count=$(wc -l < "${BIN_DIR}/real_cells.txt")
-echo "Detected ${cell_count} real cells"
+echo "Selected ${cell_count} cells"
 
 echo "Concatenation and cell detection complete!"
