@@ -181,18 +181,21 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 ######################################################################################################
 #### Extract single cells, call variants, and create count matrices
 
-# This job extracts reads for each detected cell from the chunked SAM files, calls variants, and creates RNA count matrices
+# Extract single cells from concatenated DNA and RNA bulk BAMs, then run variant calling and RNA counting
 # Outputs SC BAMs and VCFs to data/{sample}/sc_outputs/, final results to results/{sample}/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_chunks_gta.sh" \
-    "${RESULTS_DIR}/chunk_indices.txt" \
-    "${TMP_DIR}" \
+DNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_dna.bam"
+RNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_rna.bam"
+
+sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_bam_gta.sh" \
     "${RESULTS_DIR}/real_cells.txt" \
-    "${SCRIPTS_DIR}" \
+    "${DNA_BAM}" \
+    "${RNA_BAM}" \
     "${SC_OUTPUTS_DIR}" \
     "${RESULTS_DIR}" \
+    "${SCRIPTS_DIR}" \
     "${OUTPUT_NAME}")
 
-echo "Single cell extraction, variant calling, and RNA count matrix generation job ID: ${sc_from_chunks_job_ID}"
+echo "Single cell extraction, variant calling, and RNA count matrix generation job ID: ${sc_extraction_job_ID}"
 
 ######################################################################################################
 #### Pipeline completion

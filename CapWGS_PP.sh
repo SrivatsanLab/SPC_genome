@@ -214,20 +214,22 @@ fi
 #### Submit single cell extraction arrays
 
 # For GATK mode: extract from preprocessed bulk BAM
-# For bcftools mode: extract from chunked SAM files
+# For bcftools mode: extract from concatenated bulk BAM
 if [ "$VARIANT_CALLER" = "gatk" ]; then
     # Use the preprocessed BAM (symlink created by markdup_bqsr.sh)
     PREPROCESSED_BAM="${DATA_DIR}/${SAMPLE_NAME}.preprocessed.bam"
 
     # Extract single cells from preprocessed bulk BAM
-    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_bam.sh" "${PREPROCESSED_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${PREPROCESSED_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
 
     echo "Single cell extraction (from bulk BAM) job ID: ${sc_extraction_job_ID}"
 else
-    # Extract single cells from chunked SAM files (original method)
-    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SCRIPTS_DIR}")
+    # Extract single cells from concatenated bulk BAM
+    BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
-    echo "Single cell extraction (from chunks) job ID: ${sc_extraction_job_ID}"
+    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${BULK_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+
+    echo "Single cell extraction (from bulk BAM) job ID: ${sc_extraction_job_ID}"
 fi
 
 ######################################################################################################

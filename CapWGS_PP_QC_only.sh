@@ -189,16 +189,18 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 ######################################################################################################
 #### Extract single cells for QC
 
-# This job extracts reads for each detected cell from the chunked SAM files and outputs to sc_outputs/
-sc_from_chunks_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/sc_from_chunks.sh" "${RESULTS_DIR}/chunk_indices.txt" "${TMP_DIR}" "${RESULTS_DIR}/real_cells.txt" "${SCRIPTS_DIR}" "${SC_OUTPUTS_DIR}")
+# Extract single cells from concatenated bulk BAM
+BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
-echo "Single cell extraction job ID: ${sc_from_chunks_job_ID}"
+sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${BULK_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+
+echo "Single cell extraction job ID: ${sc_extraction_job_ID}"
 
 ######################################################################################################
 #### Generate bigwig files and Lorenz curves for coverage QC
 
 # This job generates bigwig files and computes Lorenz curves for each single cell
-bigwig_lorenz_job_ID=$(sbatch --parsable --dependency=afterok:$sc_from_chunks_job_ID "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SC_OUTPUTS_DIR}" 1000)
+bigwig_lorenz_job_ID=$(sbatch --parsable --dependency=afterok:$sc_extraction_job_ID "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SC_OUTPUTS_DIR}" 1000)
 
 echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
 
