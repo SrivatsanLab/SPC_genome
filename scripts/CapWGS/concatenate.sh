@@ -43,7 +43,7 @@ if [ -n "${CELL_COUNT}" ]; then
     echo "Selecting top ${CELL_COUNT} cells by read count..."
 
     # Still generate knee plot for QC purposes
-    cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > /dev/null || true
+    cat "${BIN_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" --plot "${BIN_DIR}/kneeplot.png" > /dev/null || true
 
     # Select top N cells
     tail -n +2 "${BIN_DIR}/readcounts.csv" | \
@@ -54,7 +54,7 @@ else
     # Use automatic cell detection via knee plot
     echo "Using automatic cell detection (knee plot)..."
     cat "${BIN_DIR}/readcounts.csv" | \
-        python "${SCRIPTS_DIR}/scripts/CapWGS/detect_cells.py" \
+        python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" \
         --plot "${BIN_DIR}/kneeplot.png" > "${BIN_DIR}/real_cells.txt"
 fi
 
