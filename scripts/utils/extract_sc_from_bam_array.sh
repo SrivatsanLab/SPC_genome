@@ -1,7 +1,8 @@
 #!/bin/bash
 #SBATCH -J extract_sc_bam
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
-#SBATCH -t 24:00:00
+#SBATCH -p short
+#SBATCH -t 4:00:00
 #SBATCH -c 1
 #SBATCH --mem=4G
 

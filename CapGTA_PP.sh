@@ -33,7 +33,7 @@ if [ -f "$CONFIG_FILE" ]; then
     SCRIPTS_DIR="."  # Project root directory
     N_CHUNKS="${CONFIG_processing_n_chunks:-500}"
     TMP_DIR_BASE="${CONFIG_processing_tmp_dir:-/hpc/temp/srivatsan_s/SPC_genome_preprocessing}"
-    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence}"
+    REFERENCE_GENOME="${CONFIG_reference_genome_dir:-data/reference/worm_GCA_028201515.1_STAR}"
     READ1="${CONFIG_data_read1}"
     READ2="${CONFIG_data_read2}"
     READ_COUNT="${CONFIG_data_read_count}"
@@ -43,7 +43,7 @@ else
     SCRIPTS_DIR="."  # Project root directory
     N_CHUNKS=500
     TMP_DIR_BASE="/hpc/temp/srivatsan_s/SPC_genome_preprocessing"
-    REFERENCE_GENOME="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence"
+    REFERENCE_GENOME="data/reference/worm_GCA_028201515.1_STAR"
 fi
 
 # Function to display help message

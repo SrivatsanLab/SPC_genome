@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH -J sc_vcall_bcf
 #SBATCH -o SLURM_outs/%x_%A_%a.out
+#SBATCH -p short
 #SBATCH -c 2
 #SBATCH --mem=8G
 #SBATCH -t 2:00:00
@@ -63,7 +64,6 @@ bcftools mpileup \
 bcftools call \
     --threads 2 \
     -m \
-    -A \
     --gvcf 1 \
     -O z \
     -o "${TMP_VCF}"

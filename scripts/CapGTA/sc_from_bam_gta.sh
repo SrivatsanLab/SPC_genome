@@ -97,7 +97,7 @@ echo ""
 #### Submit single-cell variant calling (BCFtools)
 echo "Submitting variant calling array job..."
 
-REFERENCE_FA="/shared/biodata/ngs/Reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa"
+REFERENCE_FA="data/reference/worm_GCA_028201515.1_STAR/GCA_028201515.1_genomic_renamed.fna"
 
 vcall_job_ID=$(sbatch --parsable \
     --dependency=afterok:${dna_extraction_job_ID} \

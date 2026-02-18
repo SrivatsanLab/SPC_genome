@@ -161,4 +161,81 @@ Each wrapper job submits:
 ### Commits
 - Merged `2-vcaller_selection` branch into main
 - Merged `CapGTA_dev` branch into main
-- Commit fd4da94: "Consolidate single-cell extraction into unified utilities (fixes #4)" 
+- Commit fd4da94: "Consolidate single-cell extraction into unified utilities (fixes #4)"
+
+---
+
+## Session Summary (Feb 18, 2026)
+
+### Problem Diagnosed
+
+**Variant Calling Complete Failure (100% Failure Rate)**
+- DNA/RNA extraction completed successfully for all 4 samples (UDI_5-8), 1000 cells each
+- All 4000 variant calling jobs failed (exit codes 11 and 127)
+- Merge jobs stuck in PENDING with `DependencyNeverSatisfied`
+- All gVCF output files were 0 bytes
+
+**Root Causes Identified:**
+
+1. **Reference Genome Mismatch**
+   - BAMs aligned to N2 strain-specific reference with renamed chromosomes (I, II, III, IV, V, X)
+   - Variant calling script used wrong Ensembl WBcel235 reference
+   - **Correct reference**: `data/reference/worm_GCA_028201515.1_STAR/GCA_028201515.1_genomic_renamed.fna`
+
+2. **bcftools Bug: `-A` Flag Incompatible with gVCF Mode**
+   - Combining `bcftools call -A --gvcf 1` triggers segmentation faults
+   - Two types of failures observed:
+     - Exit code 11: Segmentation fault (484/1000 jobs)
+     - Exit code 127: "Unexpected number of PL fields" (516/1000 jobs)
+   - Removing `-A` flag completely resolves crashes
+
+### Testing & Validation
+
+**Manual Testing:**
+- Tested bcftools with correct reference + `-A` flag: ❌ Segfault
+- Tested bcftools with correct reference, no `-A`: ✅ Success (~57s, 95MB RAM, 1.3MB gVCF)
+- Validated gVCF format: Proper MIN_DP reference blocks and variant calls present
+- Tested merge on 3-cell subset: ✅ Success (29,243 records, multi-sample format)
+
+### Fixes Implemented
+
+**1. `scripts/CapGTA/sc_variant_calling_bcftools_array.sh`**
+   - Removed `-A` flag from `bcftools call` (line 65)
+   - Added `-p short` partition for faster scheduling
+   - Runtime: ~30 seconds per cell (well under 2-hour limit)
+
+**2. `scripts/CapGTA/sc_from_bam_gta.sh`**
+   - Updated reference path to correct N2 genome (line 100)
+
+**3. `CapGTA_PP.sh`**
+   - Updated default reference in config parsing (line 36)
+   - Updated hardcoded default reference (line 46)
+
+**4. `scripts/utils/extract_sc_from_bam_array.sh`**
+   - Added `-p short` partition
+   - Reduced timeout from 24h to 4h (observed max: 1h 47m)
+
+**5. Created `bin/resubmit_variant_calling.sh`**
+   - Automated resubmission script for all 4 samples
+   - Generates barcode files from existing DNA BAMs
+   - Submits variant calling arrays and merge jobs with correct dependencies
+
+### Jobs Resubmitted
+
+Cleaned up 1000 empty gVCF files per sample, then resubmitted:
+- UDI_5: Variant calling 47730222, Merge 47730223
+- UDI_6: Variant calling 47730224, Merge 47730225
+- UDI_7: Variant calling 47730226, Merge 47730227
+- UDI_8: Variant calling 47730428, Merge 47730429
+
+**Status:** Jobs running successfully on `short` partition with corrected parameters.
+
+### Files Modified
+- `scripts/CapGTA/sc_variant_calling_bcftools_array.sh`
+- `scripts/CapGTA/sc_from_bam_gta.sh`
+- `CapGTA_PP.sh`
+- `scripts/utils/extract_sc_from_bam_array.sh`
+- Created: `bin/resubmit_variant_calling.sh`
+
+### Related Issues
+- Issue #3: Fixed bcftools gVCF mode failures (removed incompatible `-A` flag) 

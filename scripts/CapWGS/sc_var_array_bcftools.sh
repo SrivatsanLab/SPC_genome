@@ -78,7 +78,6 @@ bcftools mpileup \
 bcftools call \
     --threads 2 \
     -m \
-    -A \
     --gvcf 1 \
     -O z \
     -o "${OUTPUT_VCF}"
