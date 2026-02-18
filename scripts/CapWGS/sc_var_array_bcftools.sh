@@ -35,7 +35,7 @@ echo "=========================================="
 
 # Define input/output files
 SC_BAM="${SC_OUTPUTS_DIR}/${barcode}.bam"
-OUTPUT_VCF="${SC_OUTPUTS_DIR}/${barcode}.vcf.gz"
+OUTPUT_VCF="${SC_OUTPUTS_DIR}/${barcode}.g.vcf.gz"
 
 # Verify input BAM exists
 if [ ! -f "${SC_BAM}" ]; then
@@ -79,6 +79,7 @@ bcftools call \
     --threads 2 \
     -m \
     -A \
+    --gvcf 1 \
     -O z \
     -o "${OUTPUT_VCF}"
 

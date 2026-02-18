@@ -57,14 +57,14 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "Step 1: Finding VCF files to merge..."
 
-# Find all VCF files (excluding GVCF files if present)
-find "${VCF_DIR}" -name "*.vcf.gz" ! -name "*.g.vcf.gz" > "${VCF_LIST}"
+# Find all gVCF files
+find "${VCF_DIR}" -name "*.g.vcf.gz" > "${VCF_LIST}"
 
 # Check if any VCFs were found
 n_cells=$(wc -l < "${VCF_LIST}")
 if [ "$n_cells" -eq 0 ]; then
-    echo "ERROR: No VCF files found in ${VCF_DIR}"
-    echo "Note: Looking for *.vcf.gz files (excluding *.g.vcf.gz files)"
+    echo "ERROR: No gVCF files found in ${VCF_DIR}"
+    echo "Note: Looking for *.g.vcf.gz files"
     exit 1
 fi
 
