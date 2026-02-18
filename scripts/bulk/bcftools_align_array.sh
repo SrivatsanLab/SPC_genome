@@ -17,7 +17,6 @@ SAMPLE_LIST="${1:-data/bulk_spectra_pilot/BCF/sample_list.txt}"
 FASTQ_DIR="${2:-/fh/fast/srivatsan_s/pub/projects/00_genome_transcriptome_coassay/res/260111_VH00738_362_AACLC53HV}"
 REFERENCE="${3:-/shared/biodata/reference/GATK/hg38/BWAIndex/Homo_sapiens_assembly38.fasta.64}"
 OUTPUT_DIR="${4:-data/bulk_spectra_pilot/BCF/bams}"
-SCRIPTS_DIR="${5:-scripts}"
 
 # Create output directories
 mkdir -p SLURM_outs/
@@ -50,13 +49,18 @@ echo "FASTQ files found:"
 echo "  R1: ${R1_EXPANDED}"
 echo "  R2: ${R2_EXPANDED}"
 
-# Run alignment script
-bash scripts/bulk/bcftools_align_single.sh \
+# Run alignment script (use path relative to submission directory)
+SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+if [[ "$SCRIPT_DIR" == "/var/tmp"* ]]; then
+    # SLURM copied script to temp dir, use relative path from project root
+    SCRIPT_DIR="scripts/bulk"
+fi
+
+bash "${SCRIPT_DIR}/bcftools_align_single.sh" \
     -o "${SAMPLE}" \
     -1 "${R1_EXPANDED}" \
     -2 "${R2_EXPANDED}" \
     -g "${REFERENCE}" \
-    -O "${OUTPUT_DIR}" \
-    -s "${SCRIPTS_DIR}"
+    -O "${OUTPUT_DIR}"
 
 echo "Completed sample ${SAMPLE}"

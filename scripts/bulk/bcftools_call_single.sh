@@ -56,6 +56,7 @@ bcftools call \
     --threads 8 \
     -m \
     -A \
+    --gvcf 1 \
     -O z \
     -o "${OUTPUT_VCF}"
 

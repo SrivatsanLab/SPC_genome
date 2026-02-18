@@ -29,26 +29,23 @@ Required arguments:
   -g    <reference_genome>      Path to BWA index (e.g., /shared/biodata/reference/iGenomes/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa)
 
 Optional arguments:
-  -O    <output_dir>            Output directory (default: ./data/bulk_samples/aligned)
-  -s    <scripts_dir>           Scripts directory (default: .)
+  -O    <output_dir>            Output directory for BAMs and QC metrics (default: ./data/bulk_samples/aligned)
   -h                            Show this help message and exit
 
 EOF
 }
 
 # Default values
-SCRIPTS_DIR="."
 OUTPUT_DIR="./data/bulk_samples/aligned"
 
 # Parse command-line options
-while getopts ":o:1:2:g:O:s:h" option; do
+while getopts ":o:1:2:g:O:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
     2) READ2=$OPTARG ;;
     g) REFERENCE_GENOME=$OPTARG ;;
     O) OUTPUT_DIR=$OPTARG ;;
-    s) SCRIPTS_DIR=$OPTARG ;;
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
     :) echo "Option -$OPTARG requires an argument." >&2; show_help; exit 1 ;;
@@ -64,8 +61,6 @@ fi
 
 # Create output directories
 mkdir -p "${OUTPUT_DIR}"
-BIN_DIR="${SCRIPTS_DIR}/bin/${OUTPUT_NAME}"
-mkdir -p "${BIN_DIR}"
 
 # Create temporary directory for intermediate files
 TMP_DIR="/hpc/temp/srivatsan_s/bulk_alignment_${OUTPUT_NAME}_$$"
@@ -80,7 +75,6 @@ echo "Read 1: ${READ1}"
 echo "Read 2: ${READ2}"
 echo "Reference Genome: ${REFERENCE_GENOME}"
 echo "Output Directory: ${OUTPUT_DIR}"
-echo "Bin Directory: ${BIN_DIR}"
 echo "Temp Directory: ${TMP_DIR}"
 echo "=========================================="
 
@@ -160,12 +154,12 @@ echo ""
 echo "Step 4: Generating QC metrics..."
 
 # Basic alignment statistics
-samtools flagstat "${BAM_FILE}" > "${BIN_DIR}/${OUTPUT_NAME}_flagstat.txt"
-samtools stats "${BAM_FILE}" > "${BIN_DIR}/${OUTPUT_NAME}_stats.txt"
+samtools flagstat "${BAM_FILE}" > "${OUTPUT_DIR}/${OUTPUT_NAME}_flagstat.txt"
+samtools stats "${BAM_FILE}" > "${OUTPUT_DIR}/${OUTPUT_NAME}_stats.txt"
 
 echo "QC metrics saved to:"
-echo "  Flagstat: ${BIN_DIR}/${OUTPUT_NAME}_flagstat.txt"
-echo "  Stats: ${BIN_DIR}/${OUTPUT_NAME}_stats.txt"
+echo "  Flagstat: ${OUTPUT_DIR}/${OUTPUT_NAME}_flagstat.txt"
+echo "  Stats: ${OUTPUT_DIR}/${OUTPUT_NAME}_stats.txt"
 
 ######################################################################################################
 #### Cleanup
@@ -183,6 +177,6 @@ echo "=========================================="
 echo "Output files:"
 echo "  BAM: ${BAM_FILE}"
 echo "  BAM index: ${BAM_FILE}.bai"
-echo "  Flagstat: ${BIN_DIR}/${OUTPUT_NAME}_flagstat.txt"
-echo "  Stats: ${BIN_DIR}/${OUTPUT_NAME}_stats.txt"
+echo "  Flagstat: ${OUTPUT_DIR}/${OUTPUT_NAME}_flagstat.txt"
+echo "  Stats: ${OUTPUT_DIR}/${OUTPUT_NAME}_stats.txt"
 echo "=========================================="

@@ -185,8 +185,7 @@ ALIGN_JOB_ID=$(sbatch --parsable \
     "${SAMPLE_LIST}" \
     "${FASTQ_DIR}" \
     "${REFERENCE_BWA}" \
-    "${BAM_DIR}" \
-    "scripts")
+    "${BAM_DIR}")
 
 echo "Alignment array job submitted: ${ALIGN_JOB_ID}"
 echo ""
