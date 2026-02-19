@@ -122,6 +122,7 @@ echo "Step 3: Normalizing merged VCF and filtering out reference-only sites..."
 # Pipe: normalize -> filter out ALT="." -> compress
 bcftools norm \
     --threads 8 \
+    -c x \
     -m -both \
     -f "${REFERENCE}" \
     -O u \

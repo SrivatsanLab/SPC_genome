@@ -73,6 +73,7 @@ echo "Normalizing variants (splitting multiallelic sites, left-aligning indels).
 
 bcftools norm \
     --threads 2 \
+    -c x \
     -m -both \
     -f "${reference_fa}" \
     -O z \

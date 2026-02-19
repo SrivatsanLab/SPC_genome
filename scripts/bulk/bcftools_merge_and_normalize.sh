@@ -121,6 +121,7 @@ echo "Using 32 threads"
 # Pipe: normalize -> filter out ALT="." -> compress
 bcftools norm \
     --threads 16 \
+    -c x \
     -m -both \
     -f "${REFERENCE}" \
     -O u \
