@@ -1,6 +1,8 @@
 # CapGTA Pipeline Development
 
-## Initial Issues (Feb 11, 2026)
+Raw Data: `./SRA_upload/20260206_LH00740_0181_B232F3VLT4/Unaligned/L4/`
+
+# Initial Issues (Feb 11, 2026)
 
 I am processing new data using the @CapGTA_PP.sh pipeline.
 I submitted this new data with @bin/submit_worm_big_run.sh
@@ -239,3 +241,251 @@ Cleaned up 1000 empty gVCF files per sample, then resubmitted:
 
 ### Related Issues
 - Issue #3: Fixed bcftools gVCF mode failures (removed incompatible `-A` flag) 
+
+# New tasks (2/25/26)
+
+I debugged and ran the CapGTA pipeline on 4 samples, as described above. I have been analyzing the data, and the RNA counts are extremely low. I suspect that only taking reads spanning splice junctions is leaving quite a bit of trnascript reads on the table. I need to test that hypothesis by examing coverage- is there enrichment over exons in the "DNA" bam files? Then, if so, I need to devise an algorithm to estimate the proportion of reads that are likely rna by comparing exonic read depth to background non-coding DNA read depth. There are scripts to create bigwigs and plot coverage tracks in scripts/CapWGS_QC/ that may be useful for examining enrichment.
+
+---
+
+## Plan for RNA Read Recovery (Feb 25, 2026)
+
+### Background
+
+**Current Pipeline Behavior:**
+- STAR aligns all reads
+- Reads split by splice junctions:
+  - **RNA BAM**: Only reads with `N` in CIGAR (splice junctions) → high confidence transcripts
+  - **DNA BAM**: All other reads (includes unspliced RNA reads)
+- **Problem**: RNA counts extremely low (mean ~2,141 transcripts/cell vs reference ~43 genes detected/cell)
+- **Hypothesis**: Many exonic RNA reads without splice junctions are being classified as DNA
+
+### Phase 1: Investigate Exonic Enrichment in DNA BAMs (Diagnostic)
+
+**1.1 Generate BigWig files for visual inspection**
+- Use existing `scripts/CapWGS_QC/generate_bigwig_array.sh` to create coverage tracks for subset of DNA BAMs
+- Visually inspect coverage over gene models using `scripts/CapWGS_QC/coverage_tracks.sh`
+
+**1.2 Quantitative enrichment analysis**
+- Create script: `scripts/CapGTA/analyze_exonic_enrichment.py`
+- For each cell's DNA BAM, compute:
+  - Exonic coverage (reads overlapping exons)
+  - Intronic coverage
+  - Intergenic (non-coding) coverage
+  - Enrichment ratios (exonic/intergenic, exonic/intronic)
+- Run on representative cells from UDI_5
+- Output: Summary statistics showing whether DNA BAMs contain RNA signal
+
+### Phase 2: Develop RNA Classification Algorithm (if enrichment confirmed)
+
+**2.1 Statistical approach (preferred):**
+- For each cell:
+  1. Estimate background DNA coverage from intergenic regions
+  2. Model expected DNA coverage in exons based on background
+  3. Identify reads exceeding expected DNA coverage as likely RNA
+  4. Use statistical test (e.g., Poisson test) to classify regions as DNA vs RNA
+
+**2.2 Implementation:**
+- Create: `scripts/CapGTA/classify_rna_reads.py`
+- For each DNA BAM:
+  - Calculate background (intergenic) coverage rate
+  - For each exon, test if coverage significantly exceeds background
+  - Extract reads from high-coverage exons as additional RNA reads
+  - Merge with existing spliced RNA reads
+
+**2.3 Alternative approach (if statistical fails):**
+- Machine learning classifier using features:
+  - Coverage depth relative to background
+  - Proximity to splice junctions
+  - Gene expression patterns from reference data
+
+### Phase 3: Integrate into Pipeline (if algorithm works)
+
+**3.1 Update pipeline scripts:**
+- Create: `scripts/CapGTA/reclassify_rna_from_dna.sh`
+- Update `CapGTA_PP.sh` to optionally run reclassification
+- Add pipeline flag: `-e/--extract-exonic-rna` (optional, off by default)
+
+**3.2 Recount RNA matrices:**
+- Merge reclassified RNA reads with existing spliced RNA reads
+- Regenerate count matrices using `featureCounts` or similar
+- **Note**: When regenerating, use top 1200 barcodes instead of 1000 (was slightly conservative in cell selection)
+
+**3.3 Validation:**
+- Compare new counts to current counts and reference datasets
+- Check if cell type classification improves
+- Verify DNA variant calling not affected by read reclassification
+
+### Immediate Next Steps
+
+1. **Create quantitative enrichment analysis script** (Phase 1.2)
+   - Run on UDI_5 representative cells
+   - Determine if exonic enrichment exists in DNA BAMs
+
+2. **If enrichment confirmed** → Proceed to Phase 2.1
+
+3. **If no enrichment** → Investigate other causes:
+   - Alignment parameters
+   - GTF annotation mismatch
+   - featureCounts parameters
+   - Library quality issues
+
+---
+
+## Phase 1 Results: Exonic Enrichment Analysis (Feb 25, 2026)
+
+### Analysis Completed
+
+**Created scripts:**
+- `bin/analyze_exonic_enrichment.py` - Python script to compute exonic/intronic/intergenic coverage
+- `bin/enrichment_analysis_array.sh` - SLURM array job for parallel processing
+- `bin/compile_enrichment_results.py` - Compile individual results into summary
+
+**Analyzed:** 46 cells from worm_CapGTA_UDI_5 using parallel array job (Job ID: 48531452)
+
+### Key Findings: **STRONG EXONIC ENRICHMENT CONFIRMED**
+
+**Mean Read Distribution in DNA BAMs:**
+- **Exonic: 45.8%** (±2.4%)
+- Intronic: 22.0% (±1.7%)
+- Intergenic: 32.2% (±2.8%)
+
+**Mean Enrichment Ratios:**
+- **Exonic/Intergenic: 1.44x** (±0.19x)
+- **Exonic/Intronic: 2.10x** (±0.22x)
+- **Genic/Intergenic: 2.13x** (±0.28x)
+
+### Interpretation
+
+**The DNA BAMs contain a massive RNA signal:**
+1. **~46% of reads map to exons** - far higher than expected for random genomic DNA
+2. Expected DNA coverage should be roughly proportional to genome composition (~2-3% exonic in C. elegans)
+3. **15-20x enrichment over expected** suggests most exonic reads are likely RNA
+4. This explains the extremely low RNA counts (only counting spliced reads = ~2,141 transcripts/cell)
+5. By only taking reads with splice junctions, we're missing the vast majority of transcript reads
+
+### Conclusion
+
+**Phase 1 hypothesis CONFIRMED.** The current pipeline is severely underestimating RNA content by:
+- Classifying unspliced RNA reads as "DNA"
+- Only counting ~5-10% of actual RNA reads (those spanning introns)
+- Missing reads from:
+  - Short exons that don't span introns
+  - Intronless genes
+  - Reads that happen to fall within single exons
+
+**Next step:** Proceed to Phase 2 - develop algorithm to reclassify RNA reads from DNA BAMs.
+
+### Technical Notes
+
+- 4 jobs timed out (30 min limit) - likely cells with very high coverage
+- Should increase timeout to 1 hour for full dataset
+- Results saved to: `results/worm_CapGTA_UDI_5/enrichment_summary.csv`
+- Individual cell results in: `results/worm_CapGTA_UDI_5/enrichment_analysis/`
+
+---
+
+## Phase 2: Statistical Algorithm for RNA Classification (Feb 25, 2026)
+
+### Algorithm Design
+
+**Goal:** Estimate per-gene RNA fraction and probabilistically reclassify reads from DNA BAMs to RNA BAMs
+
+**Statistical Approach:**
+
+1. **Estimate DNA baseline coverage (λ_DNA)**
+   - Compute per-base coverage in large intergenic regions (>10kb from genes)
+   - Model as Poisson(λ_DNA) or Negative Binomial if overdispersed
+   - Provides expected DNA coverage rate
+
+2. **Test each gene for exonic enrichment**
+   - For each gene, aggregate coverage across all exons
+   - Expected DNA reads: E[R_DNA] = λ_DNA × total_exonic_length
+   - Observed reads: R_obs
+   - **Poisson rate test:** P(R ≥ R_obs | λ_DNA × L)
+   - Apply Benjamini-Hochberg FDR correction across genes
+
+3. **Estimate per-gene RNA proportion (f_RNA)**
+   - Excess reads: R_excess = max(0, R_obs - E[R_DNA])
+   - RNA fraction: f_RNA = R_excess / R_obs
+   - Apply **Bayesian shrinkage** (Beta prior) for low-coverage genes:
+     - Prior: Beta(α=3, β=2) ≈ 60% RNA in expressed genes
+     - Posterior: f_RNA = (R_excess + α) / (R_obs + α + β)
+
+4. **Probabilistically reassign reads**
+   - For each read overlapping exons:
+     - Get gene's f_RNA
+     - Assign to RNA with probability f_RNA, else keep in DNA
+   - Preserves expected proportions, avoids hard thresholds
+
+5. **Handle edge cases**
+   - Reads with splice junctions: keep in RNA (already classified correctly)
+   - Intronic reads: keep in DNA (likely true DNA)
+   - Intergenic reads: keep in DNA
+   - Multi-gene overlaps: use max(f_RNA) (conservative)
+
+### Variant Calling Strategy
+
+**Issue:** Reclassification may move true DNA reads into RNA BAM, reducing variant calling sensitivity
+
+**Solution:** BCFtools supports multiple input BAMs per sample:
+```bash
+# Call variants using BOTH DNA and RNA BAMs for same cell
+bcftools mpileup -f ref.fa cell_dna.bam cell_rna.bam | \
+    bcftools call --gvcf 1 -mv -Oz -o cell.g.vcf.gz
+```
+
+**Advantages:**
+- Recovers coverage from reclassified reads
+- No loss of variant calling sensitivity
+- RNA BAM provides additional support for true variants
+- BCFtools handles duplicate reads automatically
+
+**Implementation:**
+- Modify `scripts/CapGTA/sc_variant_calling_bcftools_array.sh` to accept both BAMs
+- Update after RNA reclassification is complete
+
+### Implementation Plan
+
+**Scripts to create:**
+1. `bin/classify_rna_from_dna.py` - Core algorithm
+   - Parse GTF for genes, exons, intergenic regions
+   - Estimate λ_DNA from intergenic coverage
+   - Compute per-gene f_RNA with statistical tests
+   - Probabilistically reassign reads
+   - Output new DNA and RNA BAMs
+
+2. `bin/reclassify_rna_array.sh` - SLURM array wrapper
+   - Process cells in parallel
+   - 1 cell per array task
+
+3. Test scripts for validation on small barcode subset
+
+**Testing strategy:**
+- Start with 5-10 test cells
+- Validate at each step:
+  - λ_DNA estimates reasonable (~0.01-0.1 reads/base)
+  - f_RNA distributions make sense (0-0.9 range)
+  - RNA counts improve significantly
+  - DNA intergenic coverage unchanged
+
+**Parameters to tune:**
+```python
+min_intergenic_size = 10000  # bp
+fdr_threshold = 0.05
+alpha_prior = 3  # RNA reads prior
+beta_prior = 2   # DNA reads prior
+min_gene_coverage = 10  # minimum reads for reliable estimate
+```
+
+### Validation Metrics
+
+After reclassification, check:
+1. **RNA counts per cell:** Should increase from ~2,141 to ~5,000-10,000
+2. **DNA intergenic coverage:** Should remain unchanged (sanity check)
+3. **Gene expression correlation:** With WormSeq reference atlas
+4. **Variant calling:** No quality degradation with dual-BAM approach
+
+### Note on Cell Count
+
+When regenerating count matrices, use **top 1200 barcodes** instead of 1000 (previous selection was slightly conservative based on knee plot analysis). 
