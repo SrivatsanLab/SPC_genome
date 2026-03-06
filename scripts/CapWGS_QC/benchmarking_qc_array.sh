@@ -17,12 +17,13 @@ SAMPLE_LIST="$1"      # File containing sample names (one per line)
 OUTPUT_DIR="$2"       # Output directory for QC metrics
 REFERENCE="$3"        # Reference genome fasta
 BAM_DIR="$4"          # Directory containing BAM files
+BAM_SUFFIX="${5:-.bam}"  # BAM file suffix (default: .bam)
 
 # Get sample name from array task ID
 SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${SAMPLE_LIST}")
 
 # Input BAM file
-BAM_FILE="${BAM_DIR}/${SAMPLE}.bam"
+BAM_FILE="${BAM_DIR}/${SAMPLE}${BAM_SUFFIX}"
 
 # Output files
 ALIGNMENT_METRICS="${OUTPUT_DIR}/${SAMPLE}_alignment_metrics.txt"
