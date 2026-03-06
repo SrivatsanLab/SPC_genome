@@ -3,7 +3,7 @@
 #SBATCH -o SLURM_outs/%x_%j.out
 #SBATCH -c 8
 #SBATCH --mem=64G
-#SBATCH -t 12:00:00
+#SBATCH -t 7-00:00:00
 
 ##########################################################################################################################
 # Joint genotyping of bulk samples using GATK GenotypeGVCFs

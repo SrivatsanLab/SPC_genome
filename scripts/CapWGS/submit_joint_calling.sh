@@ -18,6 +18,7 @@ RESULTS_DIR="$4"
 SCRIPTS_DIR="$5"
 OUTPUT_NAME="$6"
 VARIANT_CALLER="${7:-gatk}"  # Default to gatk for backward compatibility
+TMP_DIR="${8:-/hpc/temp/srivatsan_s/joint_calling_${OUTPUT_NAME}}"  # Temp directory for intermediate files
 
 echo "=========================================="
 echo "Joint Calling Submission"
@@ -60,105 +61,133 @@ if [ "$VARIANT_CALLER" = "bcftools" ]; then
 
 elif [ "$VARIANT_CALLER" = "gatk" ]; then
     ##################################################################################################################
-    # GATK mode: GenomicsDBImport + GenotypeGVCFs with parallelization
+    # GATK mode: Per-chromosome GenomicsDBImport + GenotypeGVCFs + merge
     ##################################################################################################################
 
-    echo "GATK mode: Running GenomicsDBImport and GenotypeGVCFs..."
+    echo "GATK mode: Running parallelized joint calling with per-chromosome GenomicsDB..."
     echo ""
 
-    INTERVALS_FILE="${BIN_DIR}/intervals.bed"
-    BARCODES_MAP="${BIN_DIR}/barcodes.map"
-    TMP_JC_DIR="/hpc/temp/srivatsan_s/joint_calling_${OUTPUT_NAME}"
+    # Define paths
+    INTERVALS="${REFERENCE_GENOME}/wgs_calling_regions.hg38.interval_list"
+    GENOMICSDB_DIR="${RESULTS_DIR}/genomicsdb"  # Base directory for per-chromosome databases
+    SAMPLE_MAP="${RESULTS_DIR}/sample_map.txt"
+    CHROMOSOME_FILE="${RESULTS_DIR}/chromosome_list.txt"
+    PER_CHR_DIR="${TMP_DIR}/per_chromosome_vcfs"  # Intermediate files go in temp directory
+    FINAL_VCF="${RESULTS_DIR}/${OUTPUT_NAME}_joint.vcf.gz"
 
-    mkdir -p "${TMP_JC_DIR}"
+    mkdir -p "${GENOMICSDB_DIR}"
+    mkdir -p "${PER_CHR_DIR}"
 
-# Generate intervals for parallelization (1Mb windows)
-echo "Generating genomic intervals..."
-bash "${SCRIPTS_DIR}/scripts/make_intervals.sh" "${REFERENCE}" 1000000 "${INTERVALS_FILE}"
+    ##############################################################################################################
+    # Step 1: Extract chromosome list from GATK interval list
+    ##############################################################################################################
 
-interval_count=$(wc -l < "${INTERVALS_FILE}")
-echo "Created ${interval_count} intervals"
+    echo "Step 1: Extracting chromosome list from GATK interval list..."
 
-# Create barcodes.map from VCF files
-echo "Creating barcodes.map from VCF files..."
-> "${BARCODES_MAP}"  # Clear file
-for f in "${ALIGNED_DIR}"/*.g.vcf.gz; do
-  if [[ -f "${f}.tbi" ]]; then
-    bc=$(basename "$f" .g.vcf.gz)
-    echo -e "${bc}\t${f}" >> "${BARCODES_MAP}"
-  fi
-done
+    # Extract unique chromosome names from wgs_calling_regions.hg38.interval_list
+    grep -v "^@" "${INTERVALS}" | cut -f1 | sort -u > "${CHROMOSOME_FILE}"
 
-# Verify barcodes.map has entries
-if [ ! -f "$BARCODES_MAP" ] || [ ! -s "$BARCODES_MAP" ]; then
-    echo "ERROR: barcodes.map not found or empty at: $BARCODES_MAP"
-    exit 1
-fi
+    N_CHROMOSOMES=$(wc -l < "${CHROMOSOME_FILE}")
+    echo "Extracted ${N_CHROMOSOMES} chromosomes from ${INTERVALS}"
+    echo ""
 
-cell_count=$(wc -l < "$BARCODES_MAP")
-echo "Found ${cell_count} cells in ${BARCODES_MAP}"
+    ##############################################################################################################
+    # Step 2: Create sample map from GVCFs
+    ##############################################################################################################
 
-if [ "$cell_count" -eq 0 ]; then
-    echo "ERROR: No cells in barcodes.map. Cannot perform joint calling."
-    exit 1
-fi
+    echo "Step 2: Creating sample map from GVCFs..."
 
-# Submit joint calling array job(s)
-# SLURM may have undocumented limits on array sizes, so split into batches if needed
-MAX_ARRAY_SIZE=1000  # Conservative limit to avoid SLURM issues
-echo "Submitting joint calling array..."
-
-if [ "${interval_count}" -le "${MAX_ARRAY_SIZE}" ]; then
-    # Small enough to submit as single array
-    jc_array_ID=$(sbatch --parsable \
-        --array=1-${interval_count} \
-        "${SCRIPTS_DIR}/scripts/CapWGS/joint_calling_array.sh" \
-        "${TMP_JC_DIR}" \
-        "${BARCODES_MAP}" \
-        "${INTERVALS_FILE}" \
-        "${REFERENCE}" \
-        "${SCRIPTS_DIR}")
-
-    echo "Joint calling array submitted: ${jc_array_ID}"
-    all_jc_jobs="${jc_array_ID}"
-else
-    # Split into multiple batches
-    echo "Interval count (${interval_count}) exceeds MAX_ARRAY_SIZE (${MAX_ARRAY_SIZE})"
-    echo "Splitting into multiple batches..."
-
-    all_jc_jobs=""
-    batch_num=0
-    for ((start=1; start<=${interval_count}; start+=${MAX_ARRAY_SIZE})); do
-        end=$((start + MAX_ARRAY_SIZE - 1))
-        if [ "${end}" -gt "${interval_count}" ]; then
-            end="${interval_count}"
-        fi
-
-        batch_num=$((batch_num + 1))
-        echo "  Batch ${batch_num}: intervals ${start}-${end}"
-
-        batch_jc_ID=$(sbatch --parsable \
-            --array=${start}-${end} \
-            "${SCRIPTS_DIR}/scripts/CapWGS/joint_calling_array.sh" \
-            "${TMP_JC_DIR}" \
-            "${BARCODES_MAP}" \
-            "${INTERVALS_FILE}" \
-            "${REFERENCE}" \
-            "${SCRIPTS_DIR}")
-
-        echo "    Submitted: ${batch_jc_ID}"
-
-        if [ -z "${all_jc_jobs}" ]; then
-            all_jc_jobs="${batch_jc_ID}"
-        else
-            all_jc_jobs="${all_jc_jobs}:${batch_jc_ID}"
+    > "${SAMPLE_MAP}"
+    for gvcf in "${ALIGNED_DIR}"/*.g.vcf.gz; do
+        if [ -f "$gvcf" ]; then
+            sample_name=$(basename "$gvcf" .g.vcf.gz)
+            echo -e "${sample_name}\t${gvcf}" >> "${SAMPLE_MAP}"
         fi
     done
 
-    echo "All joint calling jobs: ${all_jc_jobs}"
-fi
+    n_cells=$(wc -l < "${SAMPLE_MAP}")
+    if [ "$n_cells" -eq 0 ]; then
+        echo "ERROR: No GVCF files found in ${ALIGNED_DIR}"
+        exit 1
+    fi
 
-    echo "GATK joint calling pipeline submitted. VCF files will be in: ${TMP_JC_DIR}"
+    echo "Found ${n_cells} cells"
+    echo ""
+
+    ##############################################################################################################
+    # Step 3: Submit per-chromosome GenomicsDB import array job
+    ##############################################################################################################
+
+    echo "Step 3: Submitting per-chromosome GenomicsDB import array..."
+
+    genomicsdb_array_ID=$(sbatch --parsable \
+        --array=1-${N_CHROMOSOMES} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/gatk_genomicsdb_import_array.sh" \
+        "${ALIGNED_DIR}" \
+        "${GENOMICSDB_DIR}" \
+        "${SAMPLE_MAP}" \
+        "${REFERENCE_GENOME}" \
+        "${CHROMOSOME_FILE}")
+
+    echo "GenomicsDB import array submitted: ${genomicsdb_array_ID}"
+    echo "  Importing ${N_CHROMOSOMES} chromosomes in parallel"
+    echo ""
+
+    ##############################################################################################################
+    # Step 4: Submit per-chromosome joint calling array job (depends on GenomicsDB)
+    ##############################################################################################################
+
+    echo "Step 4: Submitting per-chromosome joint calling array..."
+
+    jc_array_ID=$(sbatch --parsable \
+        --dependency=afterok:${genomicsdb_array_ID} \
+        --array=1-${N_CHROMOSOMES} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/gatk_joint_calling_parallel_array.sh" \
+        "${GENOMICSDB_DIR}" \
+        "${PER_CHR_DIR}" \
+        "${REFERENCE_GENOME}" \
+        "${CHROMOSOME_FILE}")
+
+    echo "Joint calling array submitted: ${jc_array_ID}"
+    echo "  Calling ${N_CHROMOSOMES} chromosomes in parallel"
+    echo "  (Will run after GenomicsDB import completes)"
+    echo ""
+
+    ##############################################################################################################
+    # Step 5: Submit merge job (depends on joint calling completion)
+    ##############################################################################################################
+
+    echo "Step 5: Submitting merge job..."
+
+    merge_job_ID=$(sbatch --parsable \
+        --dependency=afterok:${jc_array_ID} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/gatk_joint_calling_parallel_merge.sh" \
+        "${PER_CHR_DIR}" \
+        "${FINAL_VCF}" \
+        "${CHROMOSOME_FILE}")
+
+    echo "Merge job submitted: ${merge_job_ID}"
+    echo "  (Will run after joint calling completes)"
+    echo ""
+
+    ##############################################################################################################
+    # Summary
+    ##############################################################################################################
+
+    echo "GATK joint calling pipeline submitted!"
+    echo ""
+    echo "Job chain:"
+    echo "  1. GenomicsDB import: ${genomicsdb_array_ID} (${N_CHROMOSOMES} chromosomes)"
+    echo "  2. Joint calling: ${jc_array_ID} (${N_CHROMOSOMES} chromosomes)"
+    echo "  3. Merge VCFs: ${merge_job_ID}"
+    echo ""
+    echo "Output files:"
+    echo "  GenomicsDB (per-chromosome): ${GENOMICSDB_DIR}/"
+    echo "  Per-chromosome VCFs (temp): ${PER_CHR_DIR}/"
+    echo "  Final merged VCF: ${FINAL_VCF}"
+    echo ""
+    echo "Note: Per-chromosome VCFs are intermediate files in temp directory"
+    echo "      They will be automatically deleted when temp directory is cleaned"
     echo ""
 
 else

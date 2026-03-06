@@ -254,6 +254,6 @@ echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 #    - GATK mode: GenomicsDBImport + GenotypeGVCFs per interval
 #    - BCFtools mode: bcftools merge + normalize
 
-submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}")
+submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
 
 echo "Joint calling submission job ID: ${submit_jc_job_ID}"
