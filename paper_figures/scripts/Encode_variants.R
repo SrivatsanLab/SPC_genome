@@ -5,10 +5,24 @@ project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 library(ggplot2)
 library(dplyr)
 library(ggridges)
+library(data.table)
 rm(list = setdiff(ls(), "project_root"))
 setwd(file.path(project_root, "paper_figures/data/encode_variant_annotation/"))
 output_dir = file.path(project_root, "paper_figures/output/encode_variants/")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+legacy_data_dir <- file.path(project_root, "..", "data", "encode_variant_annotation")
+
+resolve_data_file <- function(filename) {
+  if (file.exists(filename)) {
+    return(filename)
+  }
+  legacy_path <- file.path(legacy_data_dir, filename)
+  if (file.exists(legacy_path)) {
+    return(legacy_path)
+  }
+  return(NA_character_)
+}
+
 required_files <- c(
   "germline_max_peaks.tsv",
   "somatic_max_peaks.tsv",
@@ -17,7 +31,8 @@ required_files <- c(
   "sc_PolE_variants_HMM18.summary",
   "random_variants_HMM18.summary"
 )
-missing_files <- required_files[!file.exists(required_files)]
+required_file_paths <- setNames(vapply(required_files, resolve_data_file, character(1)), required_files)
+missing_files <- names(required_file_paths)[is.na(required_file_paths)]
 if (length(missing_files) > 0) {
   stop(
     sprintf(
@@ -28,25 +43,31 @@ if (length(missing_files) > 0) {
 }
 
 germline_peaks = 
-  read.csv("germline_max_peaks.tsv",
-           sep = "\t" ,
-           header = T) %>%
+  fread(required_file_paths[["germline_max_peaks.tsv"]],
+        sep = "\t",
+        select = "peak_bin",
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   dplyr::select(peak_bin) %>%
   mutate(type = "Germline")
 
 somatic_peaks = 
-  read.csv("somatic_max_peaks.tsv",
-           sep = "\t" ,
-           header = T) %>%
+  fread(required_file_paths[["somatic_max_peaks.tsv"]],
+        sep = "\t",
+        select = "peak_bin",
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   dplyr::select(peak_bin) %>%
   mutate(type = "Somatic")
 
 random_peaks = 
-  read.csv("random_max_peaks.tsv",
-           sep = "\t" ,
-           header = T) %>%
+  fread(required_file_paths[["random_max_peaks.tsv"]],
+        sep = "\t",
+        select = "peak_bin",
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   dplyr::select(peak_bin) %>%
   mutate(type = "Random Sample")
@@ -89,24 +110,30 @@ ggsave(paste(output_dir,"cellcycle_phase.png"),
        height = 3, width = 5)
 
 germline_HMM18 = 
-  read.csv("k562_variants_HMM18.summary",
-           sep = "\t" ,
-           header = F) %>%
+  fread(required_file_paths[["k562_variants_HMM18.summary"]],
+        sep = "\t",
+        header = FALSE,
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   mutate(type = "Germline")
 
 
 somatic_variants_HMM18 = 
-  read.csv("sc_PolE_variants_HMM18.summary",
-           sep = "\t" ,
-           header = F) %>%
+  fread(required_file_paths[["sc_PolE_variants_HMM18.summary"]],
+        sep = "\t",
+        header = FALSE,
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   mutate(type = "Somatic")
 
 random_variants_HMM18 = 
-  read.csv("random_variants_HMM18.summary",
-           sep = "\t" ,
-           header = F) %>%
+  fread(required_file_paths[["random_variants_HMM18.summary"]],
+        sep = "\t",
+        header = FALSE,
+        showProgress = FALSE) %>%
+  as.data.frame() %>%
   data.frame() %>%
   mutate(type = "Random Sample")
 
@@ -151,4 +178,3 @@ all_annotations %>%
   group_by(type) %>%
   mutate(percent_total = count/sum(count)) %>%
   filter(annotation == "TxWk")
-

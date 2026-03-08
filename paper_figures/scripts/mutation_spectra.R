@@ -5,12 +5,11 @@ library(tidyverse)
 library(Biostrings)  # for reverseComplement
 set.seed(50)
 cosmic_path <- file.path(project_root, "paper_figures/data/external/COSMIC_v3.4_SBS_GRCh38.txt")
-if (!file.exists(cosmic_path)) {
-  stop(
-    paste0(
-      "Missing COSMIC signatures file: ", cosmic_path,
-      ". Place COSMIC_v3.4_SBS_GRCh38.txt in paper_figures/data/external/."
-    )
+cosmic_available <- file.exists(cosmic_path)
+if (!cosmic_available) {
+  message(
+    "COSMIC signatures file not found at ", cosmic_path,
+    ". COSMIC-dependent decomposition outputs will be skipped."
   )
 }
 
@@ -124,74 +123,68 @@ ggsave(paste(output_dir,"spectra.pdf",sep = ""),
 
 
 # Decomposition -----------------------------------------------------------
-library(deconstructSigs)
-
-m = read.csv(cosmic_path,sep = "\t") %>%
-  as_tibble() %>%
-  column_to_rownames(var = "Type")
-
-cosmic_raw <- read.csv(cosmic_path, sep = "\t", check.names = FALSE)
-
-# First column is trinucleotide context
-contexts <- cosmic_raw[, 1]
-
-# Remaining columns are the signature profiles
-cosmic_mat <- as.data.frame(t(cosmic_raw[, -1]))
-colnames(cosmic_mat) <- contexts
-# signatures_SBS = rownames(cosmic_mat)
-cosmic_mat <- as.data.frame(cosmic_mat)
-
-# Step 1: Create a named vector with trinucleotide contexts
-signature_vector <- setNames(spectra_diff$density, spectra_diff$mutation_cosmic)
-
-# Step 2: Create a 1-row data frame as input to deconstructSigs
-sigs.input.df <- data.frame(t(signature_vector))
-rownames(sigs.input.df) <- "Sample1"
-colnames(sigs.input.df) = names(signature_vector) 
-
-# Step 3: Load COSMIC reference signatures
-data(signatures.cosmic)
-
-# Step 4: Run signature decomposition
-fit <- whichSignatures(
-  tumor.ref = sigs.input.df,
-  signatures.ref = cosmic_mat,
-  sample.id = "Sample1",
-  contexts.needed = FALSE,  # You already supplied trinucleotide context
-  tri.counts.method = 'default'
-)
-
-weights_df = 
-  data.frame(Signature = names(fit$weights),
-             Weight = as.numeric(fit$weights))
-
-SBS_order = weights_df$Signature
+if (cosmic_available) {
+  library(deconstructSigs)
   
-weights_df <- 
+  m = read.csv(cosmic_path,sep = "\t") %>%
+    as_tibble() %>%
+    column_to_rownames(var = "Type")
+  
+  cosmic_raw <- read.csv(cosmic_path, sep = "\t", check.names = FALSE)
+  
+  # First column is trinucleotide context
+  contexts <- cosmic_raw[, 1]
+  
+  # Remaining columns are the signature profiles
+  cosmic_mat <- as.data.frame(t(cosmic_raw[, -1]))
+  colnames(cosmic_mat) <- contexts
+  cosmic_mat <- as.data.frame(cosmic_mat)
+  
+  # Step 1: Create a named vector with trinucleotide contexts
+  signature_vector <- setNames(spectra_diff$density, spectra_diff$mutation_cosmic)
+  
+  # Step 2: Create a 1-row data frame as input to deconstructSigs
+  sigs.input.df <- data.frame(t(signature_vector))
+  rownames(sigs.input.df) <- "Sample1"
+  colnames(sigs.input.df) = names(signature_vector)
+  
+  # Step 3: Load COSMIC reference signatures
+  data(signatures.cosmic)
+  
+  # Step 4: Run signature decomposition
+  fit <- whichSignatures(
+    tumor.ref = sigs.input.df,
+    signatures.ref = cosmic_mat,
+    sample.id = "Sample1",
+    contexts.needed = FALSE,
+    tri.counts.method = 'default'
+  )
+  
+  weights_df =
+    data.frame(Signature = names(fit$weights),
+               Weight = as.numeric(fit$weights))
+  
+  SBS_order = weights_df$Signature
+  
+  weights_df <-
+    weights_df %>%
+    mutate(Signature = factor(Signature, levels = SBS_order)) %>%
+    arrange(Signature)
+  
   weights_df %>%
-  mutate(Signature = factor(Signature, levels = SBS_order)) %>%
-  arrange(Signature)
-
-data.frame(Signature = names(fit$weights),
-           Weight = as.numeric(fit$weights)) %>%
-  mutate(Signature = str_replace(Signature, "^w\\.", ""),
-         Signature = str_replace(Signature, "\\.", " ")) %>%
-  mutate(Signature = factor(Signature, levels = paste("Signature", 1:30)),
-         Weight = Weight *100)
-
-weights_df %>%
-  ggplot() +
-  geom_bar(aes(x = Signature,
-               y = Weight*100),
-           stat = "identity",
-           fill = "grey80",
-           color = "black") +
-  coord_flip() + 
-  theme_classic() +
-  ylab("Percent Contribution")
-ggsave(file.path(output_dir, "spectrum_decomposition.pdf"),
-       height = 10,
-       width = 4)
+    ggplot() +
+    geom_bar(aes(x = Signature,
+                 y = Weight*100),
+             stat = "identity",
+             fill = "grey80",
+             color = "black") +
+    coord_flip() +
+    theme_classic() +
+    ylab("Percent Contribution")
+  ggsave(file.path(output_dir, "spectrum_decomposition.pdf"),
+         height = 10,
+         width = 4)
+}
 
 
 # Look at filtered variants from the single cell dataset ------------------
@@ -376,7 +369,7 @@ single_cell_spectra <- as.data.frame(t(apply(single_cell_spectra, 1, function(x)
 null_vector <- colMeans(single_cell_spectra)  # assuming it's a 1000 × 96 matrix
 
 js_divs <- apply(single_cell_spectra, 1, function(vec) {
-  distance(rbind(vec, null_vector), method = "jensen-shannon")
+  distance(rbind(vec, null_vector), method = "jensen-shannon", mute.message = TRUE)
 })
 
 
@@ -384,13 +377,13 @@ n_boot <- 1000
 
 mat <- as.matrix(single_cell_spectra)
 obs_jsd <- mean(apply(mat, 1, function(row) {
-  distance(rbind(row, null_vector), method = "jensen-shannon")
+  distance(rbind(row, null_vector), method = "jensen-shannon", mute.message = TRUE)
 }))
 
 jsd_null_dist <- replicate(n_boot, {
   fake_mat <- t(apply(mat, 1, function(x) sample(null_vector)))  # shuffled version
   mean(apply(fake_mat, 1, function(row) {
-    distance(rbind(row, null_vector), method = "jensen-shannon")
+    distance(rbind(row, null_vector), method = "jensen-shannon", mute.message = TRUE)
   }))
 })
 
@@ -419,72 +412,66 @@ mean(js_divs)
 sqrt(var(js_divs))
 
 # Decomposition -----------------------------------------------------------
-library(deconstructSigs)
-library(tidyverse)
-m = read.csv(cosmic_path,sep = "\t") %>%
-  as_tibble() %>%
-  column_to_rownames(var = "Type")
-
-cosmic_raw <- read.csv(cosmic_path, sep = "\t", check.names = FALSE)
-
-# First column is trinucleotide context
-contexts <- cosmic_raw[, 1]
-
-# Remaining columns are the signature profiles
-cosmic_mat <- as.data.frame(t(cosmic_raw[, -1]))
-colnames(cosmic_mat) <- contexts
-# signatures_SBS = rownames(cosmic_mat)
-cosmic_mat <- as.data.frame(cosmic_mat)
-
-# Step 1: Create a named vector with trinucleotide contexts
-signature_vector <- setNames(average_df$density, average_df$mutation_cosmic)
-
-# Step 2: Create a 1-row data frame as input to deconstructSigs
-sigs.input.df <- data.frame(t(signature_vector))
-rownames(sigs.input.df) <- "Sample1"
-colnames(sigs.input.df) = names(signature_vector) 
-
-# Step 3: Load COSMIC reference signatures
-data(signatures.cosmic)
-
-# Step 4: Run signature decomposition
-fit <- whichSignatures(
-  tumor.ref = sigs.input.df,
-  signatures.ref = cosmic_mat,
-  sample.id = "Sample1",
-  contexts.needed = FALSE,  # You already supplied trinucleotide context
-  tri.counts.method = 'default'
-)
-
-weights_df = 
-  data.frame(Signature = names(fit$weights),
-             Weight = as.numeric(fit$weights))
-
-SBS_order = weights_df$Signature
-
-weights_df <- 
+if (cosmic_available) {
+  library(deconstructSigs)
+  library(tidyverse)
+  m = read.csv(cosmic_path,sep = "\t") %>%
+    as_tibble() %>%
+    column_to_rownames(var = "Type")
+  
+  cosmic_raw <- read.csv(cosmic_path, sep = "\t", check.names = FALSE)
+  
+  # First column is trinucleotide context
+  contexts <- cosmic_raw[, 1]
+  
+  # Remaining columns are the signature profiles
+  cosmic_mat <- as.data.frame(t(cosmic_raw[, -1]))
+  colnames(cosmic_mat) <- contexts
+  cosmic_mat <- as.data.frame(cosmic_mat)
+  
+  # Step 1: Create a named vector with trinucleotide contexts
+  signature_vector <- setNames(average_df$density, average_df$mutation_cosmic)
+  
+  # Step 2: Create a 1-row data frame as input to deconstructSigs
+  sigs.input.df <- data.frame(t(signature_vector))
+  rownames(sigs.input.df) <- "Sample1"
+  colnames(sigs.input.df) = names(signature_vector)
+  
+  # Step 3: Load COSMIC reference signatures
+  data(signatures.cosmic)
+  
+  # Step 4: Run signature decomposition
+  fit <- whichSignatures(
+    tumor.ref = sigs.input.df,
+    signatures.ref = cosmic_mat,
+    sample.id = "Sample1",
+    contexts.needed = FALSE,
+    tri.counts.method = 'default'
+  )
+  
+  weights_df =
+    data.frame(Signature = names(fit$weights),
+               Weight = as.numeric(fit$weights))
+  
+  SBS_order = weights_df$Signature
+  
+  weights_df <-
+    weights_df %>%
+    mutate(Signature = factor(Signature, levels = SBS_order)) %>%
+    arrange(Signature)
+  
   weights_df %>%
-  mutate(Signature = factor(Signature, levels = SBS_order)) %>%
-  arrange(Signature)
-
-data.frame(Signature = names(fit$weights),
-           Weight = as.numeric(fit$weights)) %>%
-  mutate(Signature = str_replace(Signature, "^w\\.", ""),
-         Signature = str_replace(Signature, "\\.", " ")) %>%
-  mutate(Signature = factor(Signature, levels = paste("Signature", 1:30)),
-         Weight = Weight *100)
-
-weights_df %>%
-  filter(Weight > 0) %>%
-  ggplot() +
-  geom_bar(aes(x = Signature,
-               y = Weight*100),
-           stat = "identity",
-           fill = "grey80",
-           color = "black") +
-  coord_flip() + 
-  theme_classic() +
-  ylab("Percent Contribution")
-ggsave(paste(output_dir,"SBS_contribution.pdf",sep = ""),
-       height = 2,
-       width = 3)
+    filter(Weight > 0) %>%
+    ggplot() +
+    geom_bar(aes(x = Signature,
+                 y = Weight*100),
+             stat = "identity",
+             fill = "grey80",
+             color = "black") +
+    coord_flip() +
+    theme_classic() +
+    ylab("Percent Contribution")
+  ggsave(paste(output_dir,"SBS_contribution.pdf",sep = ""),
+         height = 2,
+         width = 3)
+}

@@ -110,7 +110,7 @@ complex_tree = generate_tree_data(n_tips = 256)
 
 sampled_node_1 = 
   complex_tree[[2]] %>%
-  filter(depth == 16) %>%
+  dplyr::filter(depth == 16) %>%
   sample_n(1) %>%
   pull(node)
 
@@ -118,7 +118,7 @@ descendants_1 = offspring(.data = complex_tree[[1]],.node = sampled_node_1)
 
 sampled_node_2 = 
   complex_tree[[2]] %>%
-  filter(depth == 8) %>%
+  dplyr::filter(depth == 8) %>%
   pull(node) %>%
   intersect(descendants_1) %>%
   sample(1)
@@ -127,7 +127,7 @@ descendants_2 = offspring(.data = complex_tree[[1]],.node = sampled_node_2)
 
 sampled_node_3 = 
   complex_tree[[2]] %>%
-  filter(depth == 4) %>%
+  dplyr::filter(depth == 4) %>%
   pull(node) %>%
   intersect(descendants_2) %>%
   sample(1)
@@ -136,21 +136,21 @@ descendants_3 = offspring(.data = complex_tree[[1]],.node = sampled_node_3)
 
 custom_plot = ggtree(complex_tree$tree,layout = "roundrect") +
   geom_point(data = complex_tree$tree_data %>%
-               filter(node %in% c(sampled_node_1, descendants_1)),
+               dplyr::filter(node %in% c(sampled_node_1, descendants_1)),
              aes(x = x,
                  y = y),
              color = "#ff1a5e",
              stroke = 0,
              size = 4)  +
   geom_point(data = complex_tree$tree_data %>%
-               filter(node %in% c(sampled_node_2, descendants_2)),
+               dplyr::filter(node %in% c(sampled_node_2, descendants_2)),
              aes(x = x-0.2,
                  y = y),
              color = "#79AFEA",
              stroke = 0,
              size = 4)  +
   geom_point(data = complex_tree$tree_data %>%
-               filter(node %in% c(sampled_node_3, descendants_3)),
+               dplyr::filter(node %in% c(sampled_node_3, descendants_3)),
              aes(x = x-0.4,
                  y = y),
              color = "#FFDB58",
@@ -186,7 +186,7 @@ plot_ILS_descendants <- function(tree_obj,
       # Get only the nodes at that depth
       nodes_at_depth <- 
         tree_data %>% 
-        filter(depth == depth_sequence[i])
+        dplyr::filter(depth == depth_sequence[i])
 
       # If this is the highest depth, pick one node 
       if (i == 1) {
@@ -211,7 +211,7 @@ plot_ILS_descendants <- function(tree_obj,
 
       p <- p + geom_point(
         data = tree_data %>%
-          filter(node %in% highlight_nodes) %>%
+          dplyr::filter(node %in% highlight_nodes) %>%
           mutate(x_offset = x + (i-1) * offset_step),
         aes(x = x_offset, y = y),
         color = colors[i],
@@ -254,7 +254,7 @@ save_tree_plot(custom_plot, file.path(output_dir, "sparse_tree.pdf"))
 
 split_tree_data = 
   tree_data %>%
-  filter(depth == 2) %>%
+  dplyr::filter(depth == 2) %>%
   mutate(line_group = sample(c(1, 2), size = n(), replace = TRUE))
 
   
@@ -281,7 +281,7 @@ tree_df =
 # The root node has the itself as a parent
 find_self_parent_root <- function(df) {
   df %>%
-    filter(parent == node) %>%
+    dplyr::filter(parent == node) %>%
     pull(node)
 }
 
@@ -341,7 +341,7 @@ pop_colors <- c(
 )
 
 tree_df %>%
-  filter(isTip) %>%
+  dplyr::filter(isTip) %>%
   ggplot() +
   geom_violin(aes(x = pop_factor,
                    y = hops_to_root,
@@ -377,11 +377,11 @@ ggsave(paste(output_dir,"/DepthPerPopulation.pdf",sep = ""),
 
 tips = 
   tree_df %>%
-  filter(isTip)
+  dplyr::filter(isTip)
 cor.test(tips$pop_factor,tips$hops_to_root)
 
 tree_data %>%
-  arrange(-desc(x))
+  dplyr::arrange(dplyr::desc(x))
 
 ggtree(sc_tree,layout = "roundrect", size = 0.15) +
   geom_point(data = tree_df %>%
@@ -430,7 +430,7 @@ ggsave(file.path(output_dir, "sc_tree_desktop_legacy.pdf"),
 sc_tree <- as.phylo(tree_df)
 
 # 2. Extract tip labels and match them back to tree_df to get types
-tip_nodes <- tree_df %>% filter(isTip) %>% filter(!is.na(pop)) 
+tip_nodes <- tree_df %>% dplyr::filter(isTip) %>% dplyr::filter(!is.na(pop)) 
 
 tip_labels <- tip_nodes$label
 names(tip_labels) <- tip_nodes$node
@@ -475,7 +475,7 @@ closest_type_check %>%
 sc_tree <- as.phylo(tree_df)
 
 # 2. Extract tip labels and match them back to tree_df to get types
-tip_nodes <- tree_df %>% filter(isTip)
+tip_nodes <- tree_df %>% dplyr::filter(isTip)
 tip_labels <- tip_nodes$label
 names(tip_labels) <- tip_nodes$node
 
@@ -659,7 +659,7 @@ plot_df <- plot_df %>%
 
 ggplot(plot_df) +
   geom_point(data = plot_df %>%
-               filter(type == "Observed"),
+               dplyr::filter(type == "Observed"),
              aes(x = fct_rev(tip_type),
                  y = count,
                  fill = tip_type),
@@ -668,7 +668,7 @@ ggplot(plot_df) +
              stroke = 0.5,
              color = "black") +
   geom_point(data = plot_df %>%
-               filter(type == "Expected"),
+               dplyr::filter(type == "Expected"),
              aes(x = fct_rev(tip_type),
                  y = count),
              fill = 'white',
@@ -677,7 +677,7 @@ ggplot(plot_df) +
              color = "black",
              size = 2.5) +
   geom_errorbar(data = plot_df %>%
-                  filter(type == "Expected"),
+                  dplyr::filter(type == "Expected"),
     aes(x = fct_rev(tip_type),
         y = count, 
         ymin = ymin, 
@@ -713,10 +713,14 @@ library(ggtree)
 library(ggplot2)
 setwd(file.path(project_root, "paper_figures/data/Anneufinder/"))
 
-
-# Read the Newick file
-cnv_tree <- read.tree("cnv_sc_test.newick")
-sc_tree <- read.tree("../SingleCellTrees/sc_test.newick")
+required_cnv_inputs <- c("cnv_sc_test.newick", "full_meta.csv")
+if (!all(file.exists(required_cnv_inputs))) {
+  missing <- required_cnv_inputs[!file.exists(required_cnv_inputs)]
+  message("Skipping CNV subsection in draw_trees.R; missing inputs: ", paste(missing, collapse = ", "))
+} else {
+  # Read the Newick file
+  cnv_tree <- read.tree("cnv_sc_test.newick")
+  sc_tree <- read.tree("../SingleCellTrees/sc_test.newick")
 
 # Plot the tree
 p_cnv = ggtree(cnv_tree,layout = "roundrect")
@@ -768,7 +772,7 @@ ggsave(paste(output_dir,"/ploidy_histogram.pdf",sep = ""),
 
 ggplot() +
   geom_jitter(data = tree_df %>%
-               filter(isTip,),
+               dplyr::filter(isTip,),
              aes(y =ploidy-.1/50,
                  x = y,
                  fill = factor(round(ploidy))),
@@ -791,10 +795,11 @@ ggsave(paste(output_dir,"/ploidy_dist.pdf",sep = ""),
        height = 1.5,
        width = 2.5)
 
-ggtree(sc_tree,layout = "roundrect", size = 0.15) +
-  theme_void() 
+  ggtree(sc_tree,layout = "roundrect", size = 0.15) +
+    theme_void()
   ggsave(paste(output_dir,"/small_tree.pdf",sep = ""),
-       height = 2.5,
-       width = 1)
+         height = 2.5,
+         width = 1)
+}
 
   
