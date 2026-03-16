@@ -74,7 +74,7 @@ rm -rf "${TMP_DIR}"
 
 echo "Generating variant statistics for ${CHROMOSOME}..."
 
-module load BCFtools
+module load BCFtools/1.18-GCC-12.2.0
 
 bcftools stats "${OUTPUT_VCF}" > "${OUTPUT_VCF%.vcf.gz}_stats.txt"
 

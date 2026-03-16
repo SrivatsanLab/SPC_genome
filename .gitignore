@@ -77,3 +77,4 @@ notebooks/deprecated/
 notebooks/*_pilot.ipynb
 ._*
 prompt_drafting.md
+notebooks/worm_CapGTA_unsync_pilot_debranching_readcounts.ipynb
