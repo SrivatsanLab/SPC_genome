@@ -189,7 +189,7 @@ echo "Preprocessing array job ID: ${PP_array_ID}"
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells
 
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${CELL_COUNT}")
+concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${CELL_COUNT}" "${READ_COUNT}")
 
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
@@ -233,6 +233,36 @@ else
 fi
 
 ######################################################################################################
+#### Submit QC analysis arrays
+
+# Bigwig and Lorenz curve generation (for coverage uniformity assessment)
+# Runs on preprocessed BAMs for GATK mode, raw BAMs for bcftools mode
+bigwig_lorenz_job_ID=$(sbatch --parsable \
+    --dependency=afterok:$preprocessing_dependency \
+    "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${FINAL_SC_BAM_DIR}" \
+    "${FINAL_SC_BAM_DIR}" \
+    1000)
+
+echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
+
+# Benchmarking QC metrics (alignment, GC bias, duplicates, coverage)
+# Create separate QC metrics directory
+QC_METRICS_DIR="${RESULTS_DIR}/qc_metrics"
+mkdir -p "${QC_METRICS_DIR}"
+
+benchmarking_qc_job_ID=$(sbatch --parsable \
+    --dependency=afterok:$preprocessing_dependency \
+    "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_benchmarking_qc.sh" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${QC_METRICS_DIR}" \
+    "${REFERENCE_GENOME}/Homo_sapiens_assembly38.fasta" \
+    "${FINAL_SC_BAM_DIR}")
+
+echo "Benchmarking QC metrics collection job ID: ${benchmarking_qc_job_ID}"
+
+######################################################################################################
 #### Submit single cell variant calling array
 
 # This wrapper script will:
@@ -258,3 +288,16 @@ echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
 
 echo "Joint calling submission job ID: ${submit_jc_job_ID}"
+
+######################################################################################################
+#### Compile QC results
+
+# Compile QC metrics after both QC arrays complete
+compile_qc_job_ID=$(sbatch --parsable \
+    --dependency=afterok:${bigwig_lorenz_job_ID}:${benchmarking_qc_job_ID} \
+    "${SCRIPTS_DIR}/scripts/CapWGS_QC/compile_qc_results.sh" \
+    "${FINAL_SC_BAM_DIR}" \
+    "${QC_METRICS_DIR}" \
+    "${RESULTS_DIR}")
+
+echo "QC compilation job ID: ${compile_qc_job_ID}"

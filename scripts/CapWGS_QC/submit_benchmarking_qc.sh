@@ -18,21 +18,21 @@
 set -euo pipefail
 
 # Check arguments
-if [ $# -lt 3 ]; then
-    echo "Usage: $0 <sample_list> <output_dir> <bam_dir> [reference]"
+if [ $# -lt 4 ]; then
+    echo "Usage: $0 <sample_list> <output_dir> <reference> <bam_dir>"
     echo ""
     echo "Arguments:"
     echo "  sample_list: Path to file containing sample names (one per line)"
     echo "  output_dir:  Directory where QC metrics will be saved"
+    echo "  reference:   Reference genome fasta (full path)"
     echo "  bam_dir:     Directory containing BAM files"
-    echo "  reference:   Reference genome fasta (optional, defaults to hg38)"
     exit 1
 fi
 
 SAMPLE_LIST="$1"
 OUTPUT_DIR="$2"
-BAM_DIR="$3"
-REFERENCE="${4:-/shared/biodata/reference/iGenomes/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/version0.5.x/genome.fa}"
+REFERENCE="$3"
+BAM_DIR="$4"
 
 # Validate input file exists
 if [ ! -f "${SAMPLE_LIST}" ]; then

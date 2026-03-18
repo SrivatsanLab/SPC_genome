@@ -18,6 +18,7 @@ ALIGNED_DIR="$3"  # Directory for aligned BAM/SAM files (data/[experiment]/align
 BIN_DIR="$4"      # Directory for metadata files (bin/[experiment]/)
 SCRIPTS_DIR="$5"
 CELL_COUNT="${6:-}"  # Optional: user-provided cell count override
+READ_COUNT="$7"  # Total reads from input fastq (for barcode assignment rate calculation)
 
 ls $TMP_dir/*.sam > "${BIN_DIR}/sam_list.txt"
 
@@ -36,6 +37,30 @@ samtools index -@ 4 "${BAM_FILE}"
 echo "Computing read counts per barcode..."
 
 samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${BIN_DIR}/readcounts.csv"
+
+# Calculate barcode assignment statistics
+echo ""
+echo "=========================================="
+echo "Barcode Assignment Statistics"
+echo "=========================================="
+
+# Sum reads from readcounts.csv (much faster than re-counting BAM)
+total_reads_in_bam=$(tail -n +2 "${BIN_DIR}/readcounts.csv" | cut -d',' -f2 | awk '{s+=$1} END {print s}')
+
+if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
+    # Calculate assignment rate
+    assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bam / ${READ_COUNT}) * 100}")
+
+    echo "Total reads (input): ${READ_COUNT}"
+    echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
+    echo "Assignment rate: ${assignment_rate}%"
+else
+    echo "Total reads assigned to valid barcodes: ${total_reads_in_bam}"
+    echo "(Input read count not provided, cannot calculate assignment rate)"
+fi
+
+echo "=========================================="
+echo ""
 
 if [ -n "${CELL_COUNT}" ]; then
     # User provided cell count - select top N cells by read count
