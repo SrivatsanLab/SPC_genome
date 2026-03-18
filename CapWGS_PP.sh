@@ -204,39 +204,32 @@ sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${
 echo "Single cell extraction job ID: ${sc_extraction_job_ID}"
 
 ######################################################################################################
-#### Preprocessing for GATK mode (MarkDuplicates + BQSR on single cells)
+#### Preprocessing (MarkDuplicates + BQSR on single cells)
 
-if [ "$VARIANT_CALLER" = "gatk" ]; then
-    # Create directory for preprocessed single-cell BAMs
-    PREPROCESSED_SC_DIR="${SC_OUTPUTS_DIR}/preprocessed"
+# Run preprocessing on all single cells for both GATK and bcftools modes
+# After preprocessing, raw BAMs are deleted to save disk space
+# All downstream steps (variant calling and QC) use preprocessed BAMs
 
-    # Run MarkDuplicates and BQSR on each single cell in parallel
-    # This is much faster than running on the bulk BAM and provides cell-specific duplicate detection
-    sc_preprocessing_job_ID=$(sbatch --parsable \
-        --dependency=afterok:$sc_extraction_job_ID \
-        "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_preprocessing.sh" \
-        "${RESULTS_DIR}/real_cells.txt" \
-        "${SC_OUTPUTS_DIR}" \
-        "${PREPROCESSED_SC_DIR}" \
-        "${REFERENCE_GENOME}" \
-        "${SCRIPTS_DIR}")
+sc_preprocessing_job_ID=$(sbatch --parsable \
+    --dependency=afterok:$sc_extraction_job_ID \
+    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_preprocessing.sh" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${SC_OUTPUTS_DIR}" \
+    "${SC_OUTPUTS_DIR}" \
+    "${REFERENCE_GENOME}" \
+    "${SCRIPTS_DIR}")
 
-    echo "Single-cell preprocessing array job ID: ${sc_preprocessing_job_ID}"
+echo "Single-cell preprocessing array job ID: ${sc_preprocessing_job_ID}"
 
-    # Set BAM directory and dependency for downstream steps
-    FINAL_SC_BAM_DIR="${PREPROCESSED_SC_DIR}"
-    preprocessing_dependency=$sc_preprocessing_job_ID
-else
-    # bcftools mode: no preprocessing needed
-    FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
-    preprocessing_dependency=$sc_extraction_job_ID
-fi
+# All downstream steps use the same directory (preprocessed BAMs in sc_outputs/)
+FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
+preprocessing_dependency=$sc_preprocessing_job_ID
 
 ######################################################################################################
 #### Submit QC analysis arrays
 
 # Bigwig and Lorenz curve generation (for coverage uniformity assessment)
-# Runs on preprocessed BAMs for GATK mode, raw BAMs for bcftools mode
+# Uses preprocessed BAMs (for both GATK and bcftools modes)
 bigwig_lorenz_job_ID=$(sbatch --parsable \
     --dependency=afterok:$preprocessing_dependency \
     "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" \
@@ -248,7 +241,7 @@ bigwig_lorenz_job_ID=$(sbatch --parsable \
 echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
 
 # Benchmarking QC metrics (alignment, GC bias, duplicates, coverage)
-# Create separate QC metrics directory
+# Uses preprocessed BAMs (needs MarkDuplicates metrics)
 QC_METRICS_DIR="${RESULTS_DIR}/qc_metrics"
 mkdir -p "${QC_METRICS_DIR}"
 
@@ -268,8 +261,7 @@ echo "Benchmarking QC metrics collection job ID: ${benchmarking_qc_job_ID}"
 # This wrapper script will:
 # 1. Read real_cells.txt to determine how many cells were detected
 # 2. Submit the variant calling array job with the correct array size
-# For GATK mode: runs after preprocessing completes and uses preprocessed BAMs
-# For bcftools mode: runs after single cell extraction and uses raw BAMs
+# Both GATK and bcftools modes use preprocessed BAMs (after MarkDuplicates + BQSR)
 
 submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
 

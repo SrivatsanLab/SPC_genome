@@ -34,12 +34,14 @@ echo "BCFtools variant calling for cell: ${barcode}"
 echo "=========================================="
 
 # Define input/output files
-SC_BAM="${SC_OUTPUTS_DIR}/${barcode}.bam"
+# Use preprocessed BAMs (after MarkDuplicates and BQSR)
+SC_BAM="${SC_OUTPUTS_DIR}/${barcode}.preprocessed.bam"
 OUTPUT_VCF="${SC_OUTPUTS_DIR}/${barcode}.g.vcf.gz"
 
 # Verify input BAM exists
 if [ ! -f "${SC_BAM}" ]; then
-    echo "ERROR: Single-cell BAM not found: ${SC_BAM}"
+    echo "ERROR: Preprocessed single-cell BAM not found: ${SC_BAM}"
+    echo "Expected preprocessed BAM after MarkDuplicates and BQSR"
     exit 1
 fi
 
