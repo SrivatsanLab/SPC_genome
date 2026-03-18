@@ -194,42 +194,42 @@ concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_D
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Preprocessing for GATK mode (mark duplicates and BQSR)
+#### Submit single cell extraction
 
-if [ "$VARIANT_CALLER" = "gatk" ]; then
-    # Run mark duplicates and BQSR on bulk BAM before extracting single cells
-    # This follows GATK best practices
-    markdup_bqsr_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/markdup_bqsr.sh" "${DATA_DIR}/${SAMPLE_NAME}.bam" "${DATA_DIR}" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}")
+# Extract single cells from concatenated bulk BAM (for both GATK and bcftools modes)
+BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
-    echo "Mark duplicates and BQSR job ID: ${markdup_bqsr_job_ID}"
+sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${BULK_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
 
-    # Set dependency for next step
-    preprocessing_dependency=$markdup_bqsr_job_ID
-else
-    # No preprocessing needed for bcftools mode
-    preprocessing_dependency=$concat_job_ID
-fi
+echo "Single cell extraction job ID: ${sc_extraction_job_ID}"
 
 ######################################################################################################
-#### Submit single cell extraction arrays
+#### Preprocessing for GATK mode (MarkDuplicates + BQSR on single cells)
 
-# For GATK mode: extract from preprocessed bulk BAM
-# For bcftools mode: extract from concatenated bulk BAM
 if [ "$VARIANT_CALLER" = "gatk" ]; then
-    # Use the preprocessed BAM (symlink created by markdup_bqsr.sh)
-    PREPROCESSED_BAM="${DATA_DIR}/${SAMPLE_NAME}.preprocessed.bam"
+    # Create directory for preprocessed single-cell BAMs
+    PREPROCESSED_SC_DIR="${SC_OUTPUTS_DIR}/preprocessed"
 
-    # Extract single cells from preprocessed bulk BAM
-    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${PREPROCESSED_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
+    # Run MarkDuplicates and BQSR on each single cell in parallel
+    # This is much faster than running on the bulk BAM and provides cell-specific duplicate detection
+    sc_preprocessing_job_ID=$(sbatch --parsable \
+        --dependency=afterok:$sc_extraction_job_ID \
+        "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_preprocessing.sh" \
+        "${RESULTS_DIR}/real_cells.txt" \
+        "${SC_OUTPUTS_DIR}" \
+        "${PREPROCESSED_SC_DIR}" \
+        "${REFERENCE_GENOME}" \
+        "${SCRIPTS_DIR}")
 
-    echo "Single cell extraction (from bulk BAM) job ID: ${sc_extraction_job_ID}"
+    echo "Single-cell preprocessing array job ID: ${sc_preprocessing_job_ID}"
+
+    # Set BAM directory and dependency for downstream steps
+    FINAL_SC_BAM_DIR="${PREPROCESSED_SC_DIR}"
+    preprocessing_dependency=$sc_preprocessing_job_ID
 else
-    # Extract single cells from concatenated bulk BAM
-    BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
-
-    sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/utils/sc_from_bam.sh" "${BULK_BAM}" "${RESULTS_DIR}/real_cells.txt" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}")
-
-    echo "Single cell extraction (from bulk BAM) job ID: ${sc_extraction_job_ID}"
+    # bcftools mode: no preprocessing needed
+    FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
+    preprocessing_dependency=$sc_extraction_job_ID
 fi
 
 ######################################################################################################
@@ -238,9 +238,10 @@ fi
 # This wrapper script will:
 # 1. Read real_cells.txt to determine how many cells were detected
 # 2. Submit the variant calling array job with the correct array size
-# It runs after single cell extraction completes
+# For GATK mode: runs after preprocessing completes and uses preprocessed BAMs
+# For bcftools mode: runs after single cell extraction and uses raw BAMs
 
-submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$sc_extraction_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${SC_OUTPUTS_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
+submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
 
 echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 
