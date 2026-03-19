@@ -72,6 +72,9 @@ Optional arguments:
                                   bcftools: Faster, suitable for shallow pilot runs
                                   gatk: More rigorous, follows GATK best practices (includes mark duplicates and BQSR)
                                   none: Skip variant calling, run QC only
+  --use-existing-chunks         Skip fastq splitting, use existing chunks in temp directory
+                                  Requires chunk_indices.txt to exist in results directory
+                                  Useful for development/testing and retry scenarios
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -83,6 +86,16 @@ Directory structure created:
 Note: Values are applied in this order: hardcoded defaults < config.yaml < command-line arguments
 EOF
 }
+
+# Initialize flag for using existing chunks
+USE_EXISTING_CHUNKS=false
+
+# Parse long options manually before getopts
+for arg in "$@"; do
+    if [ "$arg" = "--use-existing-chunks" ]; then
+        USE_EXISTING_CHUNKS=true
+    fi
+done
 
 # Parse command-line options (these override config.yaml values)
 while getopts ":o:1:2:g:r:s:n:t:c:v:h" option; do
@@ -159,30 +172,55 @@ echo "Number of Chunks: ${N_CHUNKS}"
 echo "=========================================="
 
 ######################################################################################################
-#### chunk the fastqs
+#### chunk the fastqs (or use existing chunks)
 
-echo "Splitting fastq's into chunks for parallel processing, this might take a while..."
+if [ "$USE_EXISTING_CHUNKS" = true ]; then
+    echo "=========================================="
+    echo "Using existing fastq chunks"
+    echo "=========================================="
+    echo "Temp directory: ${TMP_DIR}"
+    echo "Results directory: ${RESULTS_DIR}"
+    echo ""
 
-# Compute total lines (each read has 4 lines)
-total_lines=$(( READ_COUNT * 4 ))
+    # Verify chunk_indices.txt exists
+    if [ ! -f "${RESULTS_DIR}/chunk_indices.txt" ]; then
+        echo "ERROR: chunk_indices.txt not found at ${RESULTS_DIR}/chunk_indices.txt"
+        echo "This file is required when using --use-existing-chunks"
+        echo ""
+        echo "chunk_indices.txt should contain the list of chunk suffixes (one per line)"
+        echo "Example: 00, 01, 02, etc."
+        exit 1
+    fi
 
-# Compute lines per chunk
-CHUNK_LINES=$(( total_lines / N_CHUNKS ))
+    chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
+    echo "Found ${chunk_count} chunks in chunk_indices.txt"
+    echo "Skipping fastq splitting step"
+    echo "=========================================="
+    echo ""
+else
+    echo "Splitting fastq's into chunks for parallel processing, this might take a while..."
 
-# Ensure CHUNK_LINES is a multiple of 4
-CHUNK_LINES=$(( CHUNK_LINES / 4 * 4 ))
+    # Compute total lines (each read has 4 lines)
+    total_lines=$(( READ_COUNT * 4 ))
 
-# Step 3: Split each FASTQ file into chunks based on respective chunk size
-# Limit to specified read count, then split into chunks
-# Use -d for numeric suffixes (00, 01, 02...) to avoid file extension collisions (e.g., 'gz')
-# Note: READ1 and READ2 are intentionally unquoted to allow shell expansion for multi-lane patterns
-zcat $READ1 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
-zcat $READ2 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
-wait
+    # Compute lines per chunk
+    CHUNK_LINES=$(( total_lines / N_CHUNKS ))
 
-ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${RESULTS_DIR}/chunk_indices.txt"
+    # Ensure CHUNK_LINES is a multiple of 4
+    CHUNK_LINES=$(( CHUNK_LINES / 4 * 4 ))
 
-chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
+    # Step 3: Split each FASTQ file into chunks based on respective chunk size
+    # Limit to specified read count, then split into chunks
+    # Use -d for numeric suffixes (00, 01, 02...) to avoid file extension collisions (e.g., 'gz')
+    # Note: READ1 and READ2 are intentionally unquoted to allow shell expansion for multi-lane patterns
+    zcat $READ1 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read1_chunk_" &
+    zcat $READ2 | head -n $total_lines | split -d -l $CHUNK_LINES - "$TMP_DIR/read2_chunk_" &
+    wait
+
+    ls "$TMP_DIR"/read1_chunk_* | sed 's/.*chunk_//' > "${RESULTS_DIR}/chunk_indices.txt"
+
+    chunk_count=$(wc -l < "${RESULTS_DIR}/chunk_indices.txt")
+fi
 
 ######################################################################################################
 #### Submit First Job array
