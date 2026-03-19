@@ -68,9 +68,10 @@ Optional arguments:
   -n    <N_CHUNKS>              Number of subjobs for SLURM arrays (default: from config.yaml or 500)
   -t    <TMP_DIR>               Temp directory for fastq chunks (default: from config.yaml or /hpc/temp/srivatsan_s/SPC_genome_preprocessing/{sample}/)
   -c    <cell_count>            Override automatic cell detection - select top N cells by read count (optional)
-  -v    <variant_caller>        Variant caller: bcftools or gatk (default: from config.yaml or bcftools)
+  -v    <variant_caller>        Variant caller: bcftools, gatk, or none (default: from config.yaml or bcftools)
                                   bcftools: Faster, suitable for shallow pilot runs
                                   gatk: More rigorous, follows GATK best practices (includes mark duplicates and BQSR)
+                                  none: Skip variant calling, run QC only
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -112,12 +113,16 @@ fi
 # Set default for CELL_COUNT if not provided
 CELL_COUNT="${CELL_COUNT:-}"
 
-# Validate variant caller option
-if [ "$VARIANT_CALLER" != "bcftools" ] && [ "$VARIANT_CALLER" != "gatk" ]; then
-    echo "Error: Invalid variant caller '${VARIANT_CALLER}'. Must be 'bcftools' or 'gatk'." >&2
+# Validate variant caller option (convert to lowercase for comparison)
+VARIANT_CALLER_LOWER=$(echo "$VARIANT_CALLER" | tr '[:upper:]' '[:lower:]')
+if [ "$VARIANT_CALLER_LOWER" != "bcftools" ] && [ "$VARIANT_CALLER_LOWER" != "gatk" ] && [ "$VARIANT_CALLER_LOWER" != "none" ]; then
+    echo "Error: Invalid variant caller '${VARIANT_CALLER}'. Must be 'bcftools', 'gatk', or 'none'." >&2
     show_help
     exit 1
 fi
+
+# Normalize variant caller to lowercase
+VARIANT_CALLER="$VARIANT_CALLER_LOWER"
 
 # Extract sample name from output path (handles paths like "benchmarking_coverage/HSC2_enzyme")
 SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
@@ -256,30 +261,35 @@ benchmarking_qc_job_ID=$(sbatch --parsable \
 echo "Benchmarking QC metrics collection job ID: ${benchmarking_qc_job_ID}"
 
 ######################################################################################################
-#### Submit single cell variant calling array
+#### Submit single cell variant calling array (skip if variant_caller=none)
 
-# This wrapper script will:
-# 1. Read real_cells.txt to determine how many cells were detected
-# 2. Submit the variant calling array job with the correct array size
-# Both GATK and bcftools modes use preprocessed BAMs (after MarkDuplicates + BQSR)
+if [ "$VARIANT_CALLER" != "none" ]; then
+    # This wrapper script will:
+    # 1. Read real_cells.txt to determine how many cells were detected
+    # 2. Submit the variant calling array job with the correct array size
+    # Both GATK and bcftools modes use preprocessed BAMs (after MarkDuplicates + BQSR)
 
-submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
+    submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
 
-echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
+    echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
 
-######################################################################################################
-#### Joint calling
+    ######################################################################################################
+    #### Joint calling
 
-# This wrapper script will:
-# 1. Generate genomic intervals for parallelization (GATK mode)
-# 2. Create barcodes.map from VCF/GVCF files
-# 3. Submit joint calling array job
-#    - GATK mode: GenomicsDBImport + GenotypeGVCFs per interval
-#    - BCFtools mode: bcftools merge + normalize
+    # This wrapper script will:
+    # 1. Generate genomic intervals for parallelization (GATK mode)
+    # 2. Create barcodes.map from VCF/GVCF files
+    # 3. Submit joint calling array job
+    #    - GATK mode: GenomicsDBImport + GenotypeGVCFs per interval
+    #    - BCFtools mode: bcftools merge + normalize
 
-submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
+    submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
 
-echo "Joint calling submission job ID: ${submit_jc_job_ID}"
+    echo "Joint calling submission job ID: ${submit_jc_job_ID}"
+else
+    echo "Variant calling skipped (VARIANT_CALLER=none)"
+    echo "Running QC-only mode"
+fi
 
 ######################################################################################################
 #### Compile QC results
