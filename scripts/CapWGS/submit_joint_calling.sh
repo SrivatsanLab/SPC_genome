@@ -61,38 +61,41 @@ if [ "$VARIANT_CALLER" = "bcftools" ]; then
 
 elif [ "$VARIANT_CALLER" = "gatk" ]; then
     ##################################################################################################################
-    # GATK mode: Per-chromosome GenomicsDBImport + GenotypeGVCFs + merge
+    # GATK mode: Interval-based GenomicsDBImport + GenotypeGVCFs + merge
     ##################################################################################################################
 
-    echo "GATK mode: Running parallelized joint calling with per-chromosome GenomicsDB..."
+    echo "GATK mode: Running parallelized joint calling with interval-based GenomicsDB..."
     echo ""
 
     # Define paths
-    INTERVALS="${REFERENCE_GENOME}/wgs_calling_regions.hg38.interval_list"
-    GENOMICSDB_DIR="${RESULTS_DIR}/genomicsdb"  # Base directory for per-chromosome databases
+    GENOMICSDB_DIR="${RESULTS_DIR}/genomicsdb"  # Base directory for per-interval databases
     SAMPLE_MAP="${RESULTS_DIR}/sample_map.txt"
-    CHROMOSOME_FILE="${RESULTS_DIR}/chromosome_list.txt"
-    PER_CHR_DIR="${TMP_DIR}/per_chromosome_vcfs"  # Intermediate files go in temp directory
+    INTERVAL_LIST="${TMP_DIR}/interval_list.txt"  # List of interval files
+    PER_INTERVAL_DIR="${TMP_DIR}/per_interval_vcfs"  # Intermediate files go in temp directory
     FINAL_VCF="${RESULTS_DIR}/${OUTPUT_NAME}_joint.vcf.gz"
+    SCATTER_COUNT=100  # Number of intervals to generate
 
     mkdir -p "${GENOMICSDB_DIR}"
-    mkdir -p "${PER_CHR_DIR}"
+    mkdir -p "${PER_INTERVAL_DIR}"
 
     ##############################################################################################################
-    # Step 1: Extract chromosome list from GATK interval list
+    # Step 1: Generate balanced genomic intervals
     ##############################################################################################################
 
-    echo "Step 1: Extracting chromosome list from GATK interval list..."
+    echo "Step 1: Generating balanced genomic intervals..."
 
-    # Extract unique chromosome names from wgs_calling_regions.hg38.interval_list
-    grep -v "^@" "${INTERVALS}" | cut -f1 | sort -u > "${CHROMOSOME_FILE}"
+    interval_gen_job_ID=$(sbatch --parsable \
+        "${SCRIPTS_DIR}/scripts/CapWGS/generate_intervals.sh" \
+        "${REFERENCE_GENOME}" \
+        "${TMP_DIR}" \
+        "${SCATTER_COUNT}")
 
-    N_CHROMOSOMES=$(wc -l < "${CHROMOSOME_FILE}")
-    echo "Extracted ${N_CHROMOSOMES} chromosomes from ${INTERVALS}"
+    echo "Interval generation job submitted: ${interval_gen_job_ID}"
+    echo "  Creating ~${SCATTER_COUNT} balanced intervals"
     echo ""
 
     ##############################################################################################################
-    # Step 2: Create sample map from GVCFs
+    # Step 2: Create sample map from GVCFs (runs while intervals are being generated)
     ##############################################################################################################
 
     echo "Step 2: Creating sample map from GVCFs..."
@@ -115,41 +118,43 @@ elif [ "$VARIANT_CALLER" = "gatk" ]; then
     echo ""
 
     ##############################################################################################################
-    # Step 3: Submit per-chromosome GenomicsDB import array job
+    # Step 3: Submit per-interval GenomicsDB import array job (depends on interval generation)
     ##############################################################################################################
 
-    echo "Step 3: Submitting per-chromosome GenomicsDB import array..."
+    echo "Step 3: Submitting per-interval GenomicsDB import array..."
+    echo "  (Will run after interval generation completes)"
 
     genomicsdb_array_ID=$(sbatch --parsable \
-        --array=1-${N_CHROMOSOMES} \
+        --dependency=afterok:${interval_gen_job_ID} \
+        --array=1-${SCATTER_COUNT} \
         "${SCRIPTS_DIR}/scripts/CapWGS/gatk_genomicsdb_import_array.sh" \
         "${ALIGNED_DIR}" \
         "${GENOMICSDB_DIR}" \
         "${SAMPLE_MAP}" \
         "${REFERENCE_GENOME}" \
-        "${CHROMOSOME_FILE}")
+        "${INTERVAL_LIST}")
 
     echo "GenomicsDB import array submitted: ${genomicsdb_array_ID}"
-    echo "  Importing ${N_CHROMOSOMES} chromosomes in parallel"
+    echo "  Importing ${SCATTER_COUNT} intervals in parallel"
     echo ""
 
     ##############################################################################################################
-    # Step 4: Submit per-chromosome joint calling array job (depends on GenomicsDB)
+    # Step 4: Submit per-interval joint calling array job (depends on GenomicsDB)
     ##############################################################################################################
 
-    echo "Step 4: Submitting per-chromosome joint calling array..."
+    echo "Step 4: Submitting per-interval joint calling array..."
 
     jc_array_ID=$(sbatch --parsable \
         --dependency=afterok:${genomicsdb_array_ID} \
-        --array=1-${N_CHROMOSOMES} \
+        --array=1-${SCATTER_COUNT} \
         "${SCRIPTS_DIR}/scripts/CapWGS/gatk_joint_calling_parallel_array.sh" \
         "${GENOMICSDB_DIR}" \
-        "${PER_CHR_DIR}" \
+        "${PER_INTERVAL_DIR}" \
         "${REFERENCE_GENOME}" \
-        "${CHROMOSOME_FILE}")
+        "${INTERVAL_LIST}")
 
     echo "Joint calling array submitted: ${jc_array_ID}"
-    echo "  Calling ${N_CHROMOSOMES} chromosomes in parallel"
+    echo "  Calling ${SCATTER_COUNT} intervals in parallel"
     echo "  (Will run after GenomicsDB import completes)"
     echo ""
 
@@ -162,9 +167,9 @@ elif [ "$VARIANT_CALLER" = "gatk" ]; then
     merge_job_ID=$(sbatch --parsable \
         --dependency=afterok:${jc_array_ID} \
         "${SCRIPTS_DIR}/scripts/CapWGS/gatk_joint_calling_parallel_merge.sh" \
-        "${PER_CHR_DIR}" \
+        "${PER_INTERVAL_DIR}" \
         "${FINAL_VCF}" \
-        "${CHROMOSOME_FILE}")
+        "${INTERVAL_LIST}")
 
     echo "Merge job submitted: ${merge_job_ID}"
     echo "  (Will run after joint calling completes)"
@@ -177,16 +182,18 @@ elif [ "$VARIANT_CALLER" = "gatk" ]; then
     echo "GATK joint calling pipeline submitted!"
     echo ""
     echo "Job chain:"
-    echo "  1. GenomicsDB import: ${genomicsdb_array_ID} (${N_CHROMOSOMES} chromosomes)"
-    echo "  2. Joint calling: ${jc_array_ID} (${N_CHROMOSOMES} chromosomes)"
+    echo "  0. Generate intervals: ${interval_gen_job_ID} (~${SCATTER_COUNT} balanced intervals)"
+    echo "  1. GenomicsDB import: ${genomicsdb_array_ID} (${SCATTER_COUNT} intervals)"
+    echo "  2. Joint calling: ${jc_array_ID} (${SCATTER_COUNT} intervals)"
     echo "  3. Merge VCFs: ${merge_job_ID}"
     echo ""
     echo "Output files:"
-    echo "  GenomicsDB (per-chromosome): ${GENOMICSDB_DIR}/"
-    echo "  Per-chromosome VCFs (temp): ${PER_CHR_DIR}/"
+    echo "  Intervals: ${TMP_DIR}/intervals/"
+    echo "  GenomicsDB (per-interval): ${GENOMICSDB_DIR}/"
+    echo "  Per-interval VCFs (temp): ${PER_INTERVAL_DIR}/"
     echo "  Final merged VCF: ${FINAL_VCF}"
     echo ""
-    echo "Note: Per-chromosome VCFs are intermediate files in temp directory"
+    echo "Note: Intervals and per-interval VCFs are intermediate files in temp directory"
     echo "      They will be automatically deleted when temp directory is cleaned"
     echo ""
 

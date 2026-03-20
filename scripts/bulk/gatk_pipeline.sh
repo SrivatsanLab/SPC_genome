@@ -153,90 +153,107 @@ if [[ "$SUBMIT_JOINT_CALLING" == true ]]; then
 
     if [[ "$PARALLEL_METHOD" == true ]]; then
         echo ""
-        echo "Method: PARALLEL joint calling (by chromosome)"
+        echo "Method: PARALLEL joint calling (interval-based)"
         echo ""
 
         # Define paths for parallel pipeline
+        TMP_DIR="${TMP_BASE_DIR}/${COHORT_NAME}_joint_calling"
         GENOMICS_DB="${OUTPUT_DIR}/vcfs/genomicsdb_${COHORT_NAME}"
-        CHROMOSOME_FILE="${OUTPUT_DIR}/vcfs/chromosome_list.txt"
-        PER_CHR_DIR="${OUTPUT_DIR}/vcfs/per_chromosome"
+        INTERVAL_LIST="${TMP_DIR}/interval_list.txt"
+        PER_INTERVAL_DIR="${TMP_DIR}/per_interval_vcfs"
+        SCATTER_COUNT=100  # Number of intervals to generate
 
         mkdir -p "${OUTPUT_DIR}/vcfs"
+        mkdir -p "${TMP_DIR}"
+        mkdir -p "${PER_INTERVAL_DIR}"
 
-        # Create chromosome list for parallel processing
-        cat > "${CHROMOSOME_FILE}" << 'EOF'
-chr1
-chr2
-chr3
-chr4
-chr5
-chr6
-chr7
-chr8
-chr9
-chr10
-chr11
-chr12
-chr13
-chr14
-chr15
-chr16
-chr17
-chr18
-chr19
-chr20
-chr21
-chr22
-chrX
-chrY
-chrM
-EOF
+        # Stage 0: Generate balanced genomic intervals
+        echo "Stage 0/4: Submitting interval generation job..."
+        INTERVAL_GEN_SCRIPT="${SCRIPT_DIR}/generate_intervals.sh"
 
-        N_CHROMOSOMES=$(wc -l < "${CHROMOSOME_FILE}")
-        mkdir -p "${PER_CHR_DIR}"
+        # Check if CapWGS generate_intervals.sh exists, use it for bulk too
+        if [ ! -f "${INTERVAL_GEN_SCRIPT}" ]; then
+            INTERVAL_GEN_SCRIPT="scripts/CapWGS/generate_intervals.sh"
+        fi
 
-        # Stage 1: GenomicsDB import
-        echo "Stage 1/3: Submitting GenomicsDB import job..."
-        GENOMICSDB_JOB_ID=$(sbatch --parsable \
+        INTERVAL_GEN_JOB_ID=$(sbatch --parsable \
             --dependency=afterok:${ARRAY_JOB_ID} \
-            "${GENOMICSDB_SCRIPT}")
-        echo "  GenomicsDB import job: ${GENOMICSDB_JOB_ID}"
+            "${INTERVAL_GEN_SCRIPT}" \
+            "${REFERENCE_DIR}" \
+            "${TMP_DIR}" \
+            "${SCATTER_COUNT}")
+        echo "  Interval generation job: ${INTERVAL_GEN_JOB_ID}"
+        echo "  Creating ~${SCATTER_COUNT} balanced intervals"
         echo "  (Will run after per-sample array job ${ARRAY_JOB_ID} completes)"
         echo ""
 
-        # Stage 2: Per-chromosome joint calling
-        echo "Stage 2/3: Submitting per-chromosome joint calling array job..."
+        # Create sample map (needed for GenomicsDB import)
+        SAMPLE_MAP="${OUTPUT_DIR}/vcfs/${COHORT_NAME}_sample_map.txt"
+        > "${SAMPLE_MAP}"
+        for gvcf in "${OUTPUT_DIR}/gvcfs"/*.g.vcf.gz; do
+            if [ -f "$gvcf" ]; then
+                sample_name=$(basename "$gvcf" .g.vcf.gz)
+                echo -e "${sample_name}\t${gvcf}" >> "${SAMPLE_MAP}"
+            fi
+        done
+
+        # Stage 1: GenomicsDB import array (depends on interval generation)
+        echo "Stage 1/4: Submitting GenomicsDB import array job..."
+        GENOMICSDB_ARRAY_SCRIPT="${SCRIPT_DIR}/gatk_genomicsdb_import_array.sh"
+
+        # Check if bulk-specific script exists, otherwise use CapWGS version
+        if [ ! -f "${GENOMICSDB_ARRAY_SCRIPT}" ]; then
+            GENOMICSDB_ARRAY_SCRIPT="scripts/CapWGS/gatk_genomicsdb_import_array.sh"
+        fi
+
+        GENOMICSDB_JOB_ID=$(sbatch --parsable \
+            --array=1-${SCATTER_COUNT} \
+            --dependency=afterok:${INTERVAL_GEN_JOB_ID} \
+            "${GENOMICSDB_ARRAY_SCRIPT}" \
+            "${OUTPUT_DIR}/gvcfs" \
+            "${GENOMICS_DB}" \
+            "${SAMPLE_MAP}" \
+            "${REFERENCE_DIR}" \
+            "${INTERVAL_LIST}")
+        echo "  GenomicsDB import array: ${GENOMICSDB_JOB_ID}"
+        echo "  Importing ${SCATTER_COUNT} intervals in parallel"
+        echo "  (Will run after interval generation ${INTERVAL_GEN_JOB_ID} completes)"
+        echo ""
+
+        # Stage 2: Per-interval joint calling
+        echo "Stage 2/4: Submitting per-interval joint calling array job..."
         PARALLEL_ARRAY_JOB_ID=$(sbatch --parsable \
-            --array=1-${N_CHROMOSOMES} \
+            --array=1-${SCATTER_COUNT} \
             --dependency=afterok:${GENOMICSDB_JOB_ID} \
             "${PARALLEL_ARRAY_SCRIPT}" \
             "${GENOMICS_DB}" \
-            "${PER_CHR_DIR}" \
+            "${PER_INTERVAL_DIR}" \
             "${REFERENCE_DIR}" \
-            "${CHROMOSOME_FILE}")
-        echo "  Per-chromosome array job: ${PARALLEL_ARRAY_JOB_ID}"
-        echo "  Processing ${N_CHROMOSOMES} chromosomes in parallel"
+            "${INTERVAL_LIST}")
+        echo "  Per-interval array job: ${PARALLEL_ARRAY_JOB_ID}"
+        echo "  Processing ${SCATTER_COUNT} intervals in parallel"
         echo "  (Will run after GenomicsDB import ${GENOMICSDB_JOB_ID} completes)"
         echo ""
 
-        # Stage 3: Merge per-chromosome VCFs
-        echo "Stage 3/3: Submitting merge job..."
+        # Stage 3: Merge per-interval VCFs
+        echo "Stage 3/4: Submitting merge job..."
         MERGE_JOB_ID=$(sbatch --parsable \
             --dependency=afterok:${PARALLEL_ARRAY_JOB_ID} \
             "${PARALLEL_MERGE_SCRIPT}" \
-            "${PER_CHR_DIR}" \
+            "${PER_INTERVAL_DIR}" \
             "${JOINT_VCF}" \
-            "${CHROMOSOME_FILE}")
+            "${INTERVAL_LIST}")
         echo "  Merge job: ${MERGE_JOB_ID}"
-        echo "  (Will run after all ${N_CHROMOSOMES} chromosome jobs complete)"
+        echo "  (Will run after all ${SCATTER_COUNT} interval jobs complete)"
         echo ""
 
         echo "Parallel pipeline submitted successfully!"
         echo ""
         echo "Job chain:"
+        echo "  0. Interval generation: ${INTERVAL_GEN_JOB_ID} (~${SCATTER_COUNT} balanced intervals)"
         echo "  1. Per-sample processing: ${ARRAY_JOB_ID}"
-        echo "  2. GenomicsDB import: ${GENOMICSDB_JOB_ID}"
-        echo "  3. Per-chromosome calling: ${PARALLEL_ARRAY_JOB_ID} (${N_CHROMOSOMES} jobs)"
+        echo "  2. GenomicsDB import: ${GENOMICSDB_JOB_ID} (${SCATTER_COUNT} intervals)"
+        echo "  3. Per-interval calling: ${PARALLEL_ARRAY_JOB_ID} (${SCATTER_COUNT} jobs)"
         echo "  4. Merge VCFs: ${MERGE_JOB_ID}"
         echo ""
 
@@ -289,8 +306,9 @@ echo ""
 echo "Check logs in:"
 echo "  SLURM_outs/array_outs/ (per-sample processing)"
 if [[ "$SUBMIT_JOINT_CALLING" == true ]] && [[ "$PARALLEL_METHOD" == true ]]; then
-    echo "  SLURM_outs/genomicsdb_import_${GENOMICSDB_JOB_ID}.out (GenomicsDB import)"
-    echo "  SLURM_outs/array_outs/joint_call_chr_${PARALLEL_ARRAY_JOB_ID}_*.out (per-chromosome calling)"
+    echo "  SLURM_outs/generate_intervals_${INTERVAL_GEN_JOB_ID}.out (interval generation)"
+    echo "  SLURM_outs/array_outs/genomicsdb_interval_${GENOMICSDB_JOB_ID}_*.out (GenomicsDB import)"
+    echo "  SLURM_outs/array_outs/jc_interval_${PARALLEL_ARRAY_JOB_ID}_*.out (per-interval calling)"
     echo "  SLURM_outs/merge_joint_vcfs_${MERGE_JOB_ID}.out (merge)"
 fi
 echo ""
@@ -300,7 +318,8 @@ echo "  GVCFs: ${OUTPUT_DIR}/gvcfs/"
 if [[ "$SUBMIT_JOINT_CALLING" == true ]]; then
     echo "  Joint VCF: ${JOINT_VCF}"
     if [[ "$PARALLEL_METHOD" == true ]]; then
-        echo "  Per-chromosome VCFs: ${PER_CHR_DIR}/"
+        echo "  Per-interval VCFs (temp): ${PER_INTERVAL_DIR}/"
+        echo "  Intervals (temp): ${TMP_DIR}/intervals/"
     fi
 fi
 echo ""

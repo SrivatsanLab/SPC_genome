@@ -6,41 +6,52 @@
 #SBATCH -t 12:00:00
 
 ##########################################################################################################################
-# Merge per-chromosome VCFs into a single joint-called VCF for CapWGS pipeline
-# This runs after all per-chromosome joint calling jobs complete
+# Merge per-interval VCFs into a single joint-called VCF for CapWGS pipeline
+# This runs after all per-interval joint calling jobs complete
+# Handles both chromosome-based (legacy) and interval-based (new) parallelization
 ##########################################################################################################################
 
 set -euo pipefail
 
 # Arguments
-PER_CHR_DIR="$1"        # Directory containing per-chromosome VCFs
+PER_INTERVAL_DIR="$1"   # Directory containing per-interval VCFs
 OUTPUT_VCF="$2"         # Final merged VCF output
-CHROMOSOME_FILE="$3"    # File with one chromosome per line
+INTERVAL_LIST="$3"      # File with one interval file path per line (or chromosome names for legacy mode)
 
 echo "============================================"
-echo "Merging CapWGS per-chromosome VCFs"
+echo "Merging CapWGS per-interval VCFs"
 echo "============================================"
 echo ""
-echo "Input directory: ${PER_CHR_DIR}"
+echo "Input directory: ${PER_INTERVAL_DIR}"
 echo "Output VCF: ${OUTPUT_VCF}"
 echo ""
 
-# Check that all per-chromosome VCFs exist
-echo "Checking for per-chromosome VCFs..."
+# Check that all per-interval VCFs exist
+echo "Checking for per-interval VCFs..."
 MISSING=0
-while read -r chr; do
-    if [ ! -f "${PER_CHR_DIR}/${chr}.vcf.gz" ]; then
-        echo "ERROR: Missing VCF for ${chr}"
+while read -r interval_path; do
+    # Extract interval name from file path (e.g., "0042-scattered" from "/path/0042-scattered.interval_list")
+    # Or just use the name directly if it's a chromosome name (legacy mode)
+    if [[ "$interval_path" == *.interval_list ]]; then
+        # New interval-based mode
+        interval_name=$(basename "$interval_path" .interval_list)
+    else
+        # Legacy chromosome-based mode
+        interval_name="$interval_path"
+    fi
+
+    if [ ! -f "${PER_INTERVAL_DIR}/${interval_name}.vcf.gz" ]; then
+        echo "ERROR: Missing VCF for ${interval_name}"
         MISSING=1
     fi
-done < "${CHROMOSOME_FILE}"
+done < "${INTERVAL_LIST}"
 
 if [ ${MISSING} -eq 1 ]; then
-    echo "ERROR: Not all per-chromosome VCFs are present. Cannot merge."
+    echo "ERROR: Not all per-interval VCFs are present. Cannot merge."
     exit 1
 fi
 
-echo "All per-chromosome VCFs found."
+echo "All per-interval VCFs found."
 echo ""
 
 ##########################################################################################################################
@@ -53,15 +64,24 @@ echo ""
 
 module load BCFtools
 
-# Create list of VCF files in chromosome order
-VCF_LIST="${PER_CHR_DIR}/vcf_list.txt"
+# Create list of VCF files in genomic order
+VCF_LIST="${PER_INTERVAL_DIR}/vcf_list.txt"
 > "${VCF_LIST}"
 
-while read -r chr; do
-    echo "${PER_CHR_DIR}/${chr}.vcf.gz" >> "${VCF_LIST}"
-done < "${CHROMOSOME_FILE}"
+while read -r interval_path; do
+    # Extract interval name from file path (or use chromosome name for legacy mode)
+    if [[ "$interval_path" == *.interval_list ]]; then
+        # New interval-based mode
+        interval_name=$(basename "$interval_path" .interval_list)
+    else
+        # Legacy chromosome-based mode
+        interval_name="$interval_path"
+    fi
 
-# Concatenate VCFs (they're already sorted by chromosome)
+    echo "${PER_INTERVAL_DIR}/${interval_name}.vcf.gz" >> "${VCF_LIST}"
+done < "${INTERVAL_LIST}"
+
+# Concatenate VCFs (they're already sorted by genomic position)
 bcftools concat \
     --file-list "${VCF_LIST}" \
     --output-type z \
