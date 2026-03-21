@@ -4,10 +4,10 @@
 
 This repository contains the code for processing sequencing data associated with the preprint [Capsule Based Genome Sequencing and Lineage Tracing](https://www.biorxiv.org/content/10.1101/2025.03.14.643253v1.full.pdf). This paper has been updated, so some of what I outline below may not pertain to the contents of the paper, but new data that we have added. In this paper we describe the use of semi-permeable capsules to perform single cell whole genome amplification at scale, and prepare illumina sequencing libraries. We use single cell combinatorial indexing, wherein encapsulated cells are sequentially split and short oligos are added to their gDNA such that each cell recieves a random combination of 4 oligos to create a unique barcode. We term this new assay CapWGS. In the paper, we benchmark the performance of CapWGS, and then apply it to perform lineage tracing on cells harboring hypermutator alleles of DNA polymerase epsilon. The referenced preprint has been reviewed, and we are in the process of adding a substantial amount of new data to address reviewer comments. We have performed more rigorous benchmarking using deep sequencing of HSCs, and we've also added a genome-transcriptome coassay - CapGTA - which we have applied to perform lineage tracing on cells isolated from c elegans.  
 
-There are 3 main pipeline scripts:
+There are 2 main pipeline scripts:
 
 * `CapWGS_PP.sh`: the main script for Capsule based whole genome sequencing- its primary purpose is to perform joint variant calling with GATK. I typically use the grch38 for precise variant calling with many alt contigs. 
-* `CapWGS_PP_QC_only.sh`: This pipeline is for when we are benchmarking coverage uniformity and basic sequencing run stats, and not necessarily performing variant calling. It outputs single cell bams, bigwigs, and some per-cell qc metrics. I typically use the standard grch37 (fewer haplotypes/alt contigs) to perform coverage uniformity benchmarking. 
+
 * `CapGTA_PP.sh`: For joint genome and transcriptome co-assay data. This uses star for alignment, and separates reads containing splice junctions into a separate RNA bam, from which it generates count matrices. 
 
 Additionally, we often need to process bulk WGS data for benchmarking or other experiments, so there are bulk processing scripts in `scripts/bulk/`.
@@ -39,7 +39,7 @@ When processing human data for variant calling, I typically use grch38:
 BWA index located here:
 `/shared/biodata/reference/GATK/hg38/BWAindex`
 
-When processing human data for evaluating coverage uniformity, I typically use grch37:
+When processing human data for evaluating coverage uniformity, I typically use the UCSC version without as many alt contigs:
 `/shared/biodata/reference/iGenomes/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa`
 
 For c elegans data, I use a bristol N2 strain specific reference I have downloaded and built indices for here:
