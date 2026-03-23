@@ -3,7 +3,7 @@
 #SBATCH -o SLURM_outs/array_outs/%x_%A_%a.out
 #SBATCH -c 4
 #SBATCH --mem=16G
-#SBATCH -t 2:00:00
+#SBATCH -t 12:00:00
 
 ##########################################################################################################################
 # Unified single-cell extraction and preprocessing array job
