@@ -237,43 +237,27 @@ concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_D
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Submit single cell extraction
+#### Submit unified single cell extraction and preprocessing
 
-# Extract single cells from concatenated bulk BAM (for both GATK and bcftools modes)
-# Use wrapper script to read cell count and submit array (cell count not available until concat completes)
+# Extract single cells from concatenated bulk BAM AND run preprocessing (MarkDuplicates + BQSR)
+# This unified approach avoids race conditions by doing both steps in a single array job
+# After preprocessing, raw BAMs are deleted to save disk space
 BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
-sc_extraction_job_ID=$(sbatch --parsable \
+sc_extract_preprocess_job_ID=$(sbatch --parsable \
     --dependency=afterok:$concat_job_ID \
-    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_extraction.sh" \
+    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_extract_and_preprocess.sh" \
     "${BULK_BAM}" \
     "${RESULTS_DIR}/real_cells.txt" \
-    "${SC_OUTPUTS_DIR}" \
-    "${SCRIPTS_DIR}")
-
-echo "Single cell extraction job ID: ${sc_extraction_job_ID}"
-
-######################################################################################################
-#### Preprocessing (MarkDuplicates + BQSR on single cells)
-
-# Run preprocessing on all single cells for both GATK and bcftools modes
-# After preprocessing, raw BAMs are deleted to save disk space
-# All downstream steps (variant calling and QC) use preprocessed BAMs
-
-sc_preprocessing_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$sc_extraction_job_ID \
-    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_preprocessing.sh" \
-    "${RESULTS_DIR}/real_cells.txt" \
-    "${SC_OUTPUTS_DIR}" \
     "${SC_OUTPUTS_DIR}" \
     "${REFERENCE_GENOME}" \
     "${SCRIPTS_DIR}")
 
-echo "Single-cell preprocessing array job ID: ${sc_preprocessing_job_ID}"
+echo "Single-cell extraction and preprocessing job ID: ${sc_extract_preprocess_job_ID}"
 
-# All downstream steps use the same directory (preprocessed BAMs in sc_outputs/)
+# All downstream steps use preprocessed BAMs in sc_outputs/
 FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
-preprocessing_dependency=$sc_preprocessing_job_ID
+preprocessing_dependency=$sc_extract_preprocess_job_ID
 
 ######################################################################################################
 #### Submit QC analysis arrays
