@@ -90,3 +90,6 @@ echo "Array size: 1-${cell_count}"
 echo ""
 echo "Single-cell BAMs will be written to: ${SC_OUTPUTS_DIR}"
 echo ""
+
+# Output the array job ID as the last line so it can be captured by parent script
+echo "${array_ID}"
