@@ -240,20 +240,18 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 #### Submit single cell extraction
 
 # Extract single cells from concatenated bulk BAM (for both GATK and bcftools modes)
+# Use wrapper script to read cell count and submit array (cell count not available until concat completes)
 BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
-CELL_COUNT=$(wc -l < "${RESULTS_DIR}/real_cells.txt")
 
-# Submit array job directly to extract all cells
-echo "Submitting single-cell extraction array for ${CELL_COUNT} cells..."
-sc_extraction_array_ID=$(sbatch --parsable \
+sc_extraction_job_ID=$(sbatch --parsable \
     --dependency=afterok:$concat_job_ID \
-    --array=1-${CELL_COUNT} \
-    "${SCRIPTS_DIR}/scripts/utils/extract_sc_from_bam_array.sh" \
+    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_extraction.sh" \
     "${BULK_BAM}" \
     "${RESULTS_DIR}/real_cells.txt" \
-    "${SC_OUTPUTS_DIR}")
+    "${SC_OUTPUTS_DIR}" \
+    "${SCRIPTS_DIR}")
 
-echo "Single cell extraction array job ID: ${sc_extraction_array_ID}"
+echo "Single cell extraction job ID: ${sc_extraction_job_ID}"
 
 ######################################################################################################
 #### Preprocessing (MarkDuplicates + BQSR on single cells)
@@ -263,7 +261,7 @@ echo "Single cell extraction array job ID: ${sc_extraction_array_ID}"
 # All downstream steps (variant calling and QC) use preprocessed BAMs
 
 sc_preprocessing_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$sc_extraction_array_ID \
+    --dependency=afterok:$sc_extraction_job_ID \
     "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_preprocessing.sh" \
     "${RESULTS_DIR}/real_cells.txt" \
     "${SC_OUTPUTS_DIR}" \

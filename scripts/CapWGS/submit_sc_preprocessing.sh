@@ -68,11 +68,17 @@ echo "=========================================="
 echo "Job ID: ${preprocess_array_ID}"
 echo "Array size: 1-${cell_count}"
 echo ""
-echo "Monitor progress with:"
-echo "  squeue -j ${preprocess_array_ID}"
+echo "Waiting for preprocessing array to complete..."
+echo "(This wrapper will hold until all ${cell_count} preprocessing jobs finish)"
 echo ""
-echo "Check logs in:"
-echo "  SLURM_outs/array_outs/sc_preprocess_${preprocess_array_ID}_*.out"
+
+# Wait for the array job to complete using srun with dependency
+# This ensures downstream jobs depending on THIS wrapper will wait for preprocessing to finish
+srun --dependency=afterok:${preprocess_array_ID} --ntasks=1 --cpus-per-task=1 --mem=100M --time=1 /bin/true
+
 echo ""
-echo "Output BAMs will be in: ${PREPROCESSED_BAM_DIR}"
+echo "=========================================="
+echo "Preprocessing array complete!"
+echo "=========================================="
+echo "Output BAMs in: ${PREPROCESSED_BAM_DIR}"
 echo "=========================================="
