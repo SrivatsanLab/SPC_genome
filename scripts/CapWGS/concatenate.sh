@@ -40,26 +40,47 @@ samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcoun
 
 # Calculate barcode assignment statistics
 echo ""
-echo "=========================================="
-echo "Barcode Assignment Statistics"
-echo "=========================================="
+echo "Calculating barcode assignment statistics..."
 
 # Sum reads from readcounts.csv (much faster than re-counting BAM)
 total_reads_in_bam=$(tail -n +2 "${BIN_DIR}/readcounts.csv" | cut -d',' -f2 | awk '{s+=$1} END {print s}')
 
-if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
-    # Calculate assignment rate
-    assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bam / ${READ_COUNT}) * 100}")
+# Determine RESULTS_DIR from BIN_DIR (bin/{sample} -> results/{sample})
+RESULTS_DIR="${BIN_DIR/bin/results}"
+mkdir -p "${RESULTS_DIR}"
 
-    echo "Total reads (input): ${READ_COUNT}"
-    echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
-    echo "Assignment rate: ${assignment_rate}%"
-else
-    echo "Total reads assigned to valid barcodes: ${total_reads_in_bam}"
-    echo "(Input read count not provided, cannot calculate assignment rate)"
-fi
+ASSIGNMENT_STATS="${RESULTS_DIR}/barcode_assignment_stats.txt"
 
-echo "=========================================="
+# Write statistics to file
+{
+    echo "=========================================="
+    echo "Barcode Assignment Statistics"
+    echo "=========================================="
+    echo ""
+
+    if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
+        # Multiply READ_COUNT by 2 for paired-end reads
+        total_input_reads=$((READ_COUNT * 2))
+
+        # Calculate assignment rate
+        assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bam / $total_input_reads) * 100}")
+
+        echo "Total input reads (paired-end): ${total_input_reads}"
+        echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
+        echo "Assignment rate: ${assignment_rate}%"
+    else
+        echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
+        echo "(Input read count not provided, cannot calculate assignment rate)"
+    fi
+
+    echo ""
+    echo "=========================================="
+} > "${ASSIGNMENT_STATS}"
+
+# Also print to console
+cat "${ASSIGNMENT_STATS}"
+
+echo "Barcode assignment statistics written to: ${ASSIGNMENT_STATS}"
 echo ""
 
 if [ -n "${CELL_COUNT}" ]; then
