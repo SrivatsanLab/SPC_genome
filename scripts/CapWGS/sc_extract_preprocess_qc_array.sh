@@ -59,7 +59,9 @@ echo "Step 1: Extracting reads for barcode ${BARCODE}..."
 
 module load SAMtools
 
-samtools view -h "${BULK_BAM}" | \
+# Extract reads for this barcode, filtering out secondary/supplementary alignments to avoid duplicates
+# -F 0x900 filters out secondary (0x100) and supplementary (0x800) alignments
+samtools view -h -F 0x900 "${BULK_BAM}" | \
     grep -E "^@|CB:Z:${BARCODE}" | \
     samtools sort -@ 4 -o "${RAW_BAM}"
 
