@@ -26,7 +26,8 @@ BAM_DIR=$(readlink -f "${BAM_DIR}")
 OUTPUT_DIR=$(readlink -f "${OUTPUT_DIR}")
 
 # Input and output files
-BAM_FILE="${BAM_DIR}/${SAMPLE}.bam"
+# Use preprocessed BAM (MarkDuplicates + BQSR applied)
+BAM_FILE="${BAM_DIR}/${SAMPLE}.preprocessed.bam"
 BIGWIG_FILE="${OUTPUT_DIR}/${SAMPLE}.bw"
 LORENZ_FILE="${OUTPUT_DIR}/${SAMPLE}_lorenz.csv"
 GINI_FILE="${OUTPUT_DIR}/${SAMPLE}_gini.txt"
@@ -39,6 +40,7 @@ echo "Output Lorenz curve: ${LORENZ_FILE}"
 # Check if BAM file exists
 if [ ! -f "${BAM_FILE}" ]; then
     echo "ERROR: BAM file not found: ${BAM_FILE}"
+    echo "Expected preprocessed BAM at: ${BAM_FILE}"
     exit 1
 fi
 

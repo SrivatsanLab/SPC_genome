@@ -57,13 +57,15 @@ echo "Reference: ${REFERENCE}"
 echo ""
 
 # Submit array job
+# Use .preprocessed.bam suffix since pipeline now outputs preprocessed BAMs
 JOB_ID=$(sbatch --parsable \
     --array=1-${SAMPLE_COUNT} \
     scripts/CapWGS_QC/benchmarking_qc_array.sh \
     "${SAMPLE_LIST}" \
     "${OUTPUT_DIR}" \
     "${REFERENCE}" \
-    "${BAM_DIR}")
+    "${BAM_DIR}" \
+    ".preprocessed.bam")
 
 echo "Job submitted with ID: ${JOB_ID}"
 echo ""
