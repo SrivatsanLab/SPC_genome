@@ -124,7 +124,7 @@ SAM_FILE="${TMP_DIR}/${chunk}.sam"
 
 echo "Aligning with BWA-MEM"
 # Add read group for GATK compatibility
-RG="@RG\tID:${SAMPLE_NAME}_chunk${chunk}\tSM:${SAMPLE_NAME}\tPL:ILLUMINA\tLB:${SAMPLE_NAME}"
+RG="@RG\tID:${SAMPLE_NAME}\tSM:${SAMPLE_NAME}\tPL:ILLUMINA\tLB:${SAMPLE_NAME}"
 bwa mem -t 4 -c 1 -C -R "${RG}" -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${READ2}"
 
 # Delete fastq's

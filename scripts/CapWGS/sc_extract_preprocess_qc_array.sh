@@ -164,7 +164,7 @@ echo "Step 5: Generating Lorenz curve..."
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate spc_genome
 
-python "${SCRIPTS_DIR}/scripts/CapWGS_QC/lorenz_curve.py" \
+python "${SCRIPTS_DIR}/scripts/CapWGS_QC/lorenz.py" \
     "${PREPROCESSED_BAM}" "${LORENZ_CSV}"
 
 echo "✓ Lorenz curve complete"
