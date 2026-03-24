@@ -120,8 +120,15 @@ else
     echo "Using MarkDuplicates output as final preprocessed BAM"
 
     # Just rename markdup BAM to preprocessed BAM
+    # Note: Picard CREATE_INDEX=true creates .bai (not .bam.bai)
     mv "${MARKDUP_BAM}" "${PREPROCESSED_BAM}"
-    mv "${MARKDUP_BAM}.bai" "${PREPROCESSED_BAM}.bai"
+
+    # Index file might be either .bai or .bam.bai depending on Picard version
+    if [ -f "${MARKDUP_BAM%.bam}.bai" ]; then
+        mv "${MARKDUP_BAM%.bam}.bai" "${PREPROCESSED_BAM}.bai"
+    elif [ -f "${MARKDUP_BAM}.bai" ]; then
+        mv "${MARKDUP_BAM}.bai" "${PREPROCESSED_BAM}.bai"
+    fi
 fi
 
 echo ""
