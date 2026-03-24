@@ -184,15 +184,23 @@ Currently, MarkDuplicates and BQSR run on the bulk concatenated BAM (GATK mode o
 7. joint_calling (GenomicsDB + GenotypeGVCFs)
 ```
 
-#### New GATK Pipeline Flow:
+#### New GATK Pipeline Flow (UNIFIED ARCHITECTURE):
 ```
-1. PP_array (alignment)
-2. concatenate (merge chunks, detect cells)
-3. sc_from_bam (extract single cells from raw bulk BAM)
-4. sc_preprocessing_array (MarkDuplicates + BQSR per cell) ← NEW, PARALLEL
-5. QC arrays (bigwig, lorenz, benchmarking) ← Uses preprocessed BAMs
-6. sc_variant_calling (HaplotypeCaller on preprocessed BAMs)
-7. joint_calling (GenomicsDB + GenotypeGVCFs)
+Within CapWGS_PP.sh:
+1. Parse args (no change)
+2. Split fastqs (no change)
+3. Submit PP_array → WAIT
+4. Concatenate SAMs, detect cells (moved from concatenate.sh, runs in CapWGS_PP.sh)
+5. Submit unified SC array (extraction + preprocessing + QC) → WAIT
+6. Submit SC variant calling array → WAIT
+7. Submit joint calling (submit_joint_calling.sh keeps internal arrays, no wait needed)
+8. Compile QC metrics (moved from compile_qc_results.sh, runs in CapWGS_PP.sh)
+
+Key Changes:
+- CapWGS_PP.sh submits arrays directly (no wrapper scripts)
+- Uses `srun --dependency=afterok:$array_ID --wait=0 true` to wait for arrays
+- Single-threaded steps run directly in CapWGS_PP.sh
+- Eliminates race conditions from wrapper completion
 ```
 
 #### BCFtools Pipeline Flow (unchanged):
@@ -205,9 +213,43 @@ Currently, MarkDuplicates and BQSR run on the bulk concatenated BAM (GATK mode o
 6. joint_calling (bcftools merge + normalize)
 ```
 
-### Components
+### Implementation: Refactor Main Pipeline to Eliminate Race Conditions
 
-#### 2.1: Create Single-Cell Preprocessing Array Script
+#### 2.1: Core Principle
+**CapWGS_PP.sh serves as the main scheduler:**
+- Runs single-threaded housekeeping tasks directly (fastq splitting, concatenation, QC compilation)
+- Submits array jobs directly (no wrapper scripts)
+- Waits for arrays to complete using `srun --dependency=afterok:$array_ID --wait=0 true`
+- Eliminates all wrapper script race conditions
+
+#### 2.2: Changes to CapWGS_PP.sh
+
+**Move concatenation inline** (from `concatenate.sh`):
+- After PP_array wait completes, run SAM merging directly
+- Run cell detection directly
+- Read cell count: `CELL_COUNT=$(wc -l < "${RESULTS_DIR}/real_cells.txt")`
+
+**Submit unified SC array directly**:
+```bash
+sc_unified_job_ID=$(sbatch --parsable \
+    --array=1-${CELL_COUNT} \
+    "${SCRIPTS_DIR}/scripts/CapWGS/sc_extract_preprocess_qc_array.sh" \
+    "${BULK_BAM}" \
+    "${RESULTS_DIR}/real_cells.txt" \
+    "${SC_OUTPUTS_DIR}" \
+    "${QC_METRICS_DIR}" \
+    "${REFERENCE_GENOME}" \
+    "${SCRIPTS_DIR}" \
+    1000)
+
+# Wait for array to complete
+srun --dependency=afterok:${sc_unified_job_ID} --wait=0 true
+```
+
+**Move QC compilation inline** (from `compile_qc_results.sh`):
+- After SC unified array wait completes, run compilation directly
+
+#### 2.3: Create Single-Cell Preprocessing Array Script
 **New file**: `scripts/CapWGS/sc_preprocessing_array.sh`
 
 **Purpose**: Run MarkDuplicates and BQSR on individual single-cell BAMs

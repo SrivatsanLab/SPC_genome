@@ -223,21 +223,102 @@ else
 fi
 
 ######################################################################################################
-#### Submit First Job array
+#### Submit preprocessing array and wait for completion
 
 PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
-######################################################################################################
-#### Concatenate SAM files, create BAM, and detect real cells
-
-concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_DIR}/scripts/CapWGS/concatenate.sh" "${SAMPLE_NAME}" "${TMP_DIR}" "${DATA_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${CELL_COUNT}" "${READ_COUNT}")
-
-echo "Concatenation and cell detection job ID: ${concat_job_ID}"
+# Wait for preprocessing array to complete
+echo "Waiting for preprocessing array to complete..."
+srun --dependency=afterok:${PP_array_ID} --wait=0 true
+echo "Preprocessing array complete!"
 
 ######################################################################################################
-#### Submit unified single cell processing (extraction + preprocessing + QC)
+#### Concatenate SAM files, create BAM, and detect real cells (runs inline)
+
+echo "=========================================="
+echo "Concatenating SAM files and detecting cells..."
+echo "=========================================="
+
+# Activate conda environment for python scripts
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate spc_genome
+
+ls ${TMP_DIR}/*.sam > "${RESULTS_DIR}/sam_list.txt"
+
+BAM_FILE="${DATA_DIR}/${SAMPLE_NAME}.bam"
+
+module load SAMtools
+
+echo "Merging SAM chunks directly to sorted BAM..."
+# Merge and sort in one streaming operation
+samtools merge -@ 4 -b "${RESULTS_DIR}/sam_list.txt" -O SAM - | samtools sort -@ 4 -o "${BAM_FILE}"
+
+echo "Indexing BAM file..."
+samtools index -@ 4 "${BAM_FILE}"
+
+echo "Computing read counts per barcode..."
+samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${RESULTS_DIR}/readcounts.csv"
+
+# Calculate barcode assignment statistics
+echo ""
+echo "Calculating barcode assignment statistics..."
+total_reads_in_bam=$(tail -n +2 "${RESULTS_DIR}/readcounts.csv" | cut -d',' -f2 | awk '{s+=$1} END {print s}')
+
+ASSIGNMENT_STATS="${RESULTS_DIR}/barcode_assignment_stats.txt"
+{
+    echo "=========================================="
+    echo "Barcode Assignment Statistics"
+    echo "=========================================="
+    echo ""
+
+    if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
+        # Multiply READ_COUNT by 2 for paired-end reads
+        total_input_reads=$((READ_COUNT * 2))
+        assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bam / $total_input_reads) * 100}")
+        echo "Total input reads (paired-end): ${total_input_reads}"
+        echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
+        echo "Assignment rate: ${assignment_rate}%"
+    else
+        echo "Reads assigned to valid barcodes: ${total_reads_in_bam}"
+        echo "(Input read count not provided, cannot calculate assignment rate)"
+    fi
+
+    echo ""
+    echo "=========================================="
+} > "${ASSIGNMENT_STATS}"
+
+cat "${ASSIGNMENT_STATS}"
+echo "Barcode assignment statistics written to: ${ASSIGNMENT_STATS}"
+echo ""
+
+# Cell detection
+if [ -n "${CELL_COUNT}" ]; then
+    echo "Using user-provided cell count: ${CELL_COUNT}"
+    echo "Selecting top ${CELL_COUNT} cells by read count..."
+    # Generate knee plot for QC
+    cat "${RESULTS_DIR}/readcounts.csv" | python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" --plot "${RESULTS_DIR}/kneeplot.png" > /dev/null || true
+    # Select top N cells
+    tail -n +2 "${RESULTS_DIR}/readcounts.csv" | \
+        sort -t',' -k2 -nr | \
+        head -${CELL_COUNT} | \
+        cut -d',' -f1 > "${RESULTS_DIR}/real_cells.txt"
+else
+    echo "Using automatic cell detection (knee plot)..."
+    cat "${RESULTS_DIR}/readcounts.csv" | \
+        python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" \
+        --plot "${RESULTS_DIR}/kneeplot.png" > "${RESULTS_DIR}/real_cells.txt"
+fi
+
+DETECTED_CELL_COUNT=$(wc -l < "${RESULTS_DIR}/real_cells.txt")
+echo "Selected ${DETECTED_CELL_COUNT} cells"
+echo "Concatenation and cell detection complete!"
+echo "=========================================="
+echo ""
+
+######################################################################################################
+#### Submit unified single cell processing array (extraction + preprocessing + QC)
 
 # Single array job that does EVERYTHING for each cell:
 # 1. Extract reads from bulk BAM
@@ -245,15 +326,16 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 # 3. Generate bigwig
 # 4. Generate Lorenz curve
 # 5. Collect QC metrics
-# This eliminates ALL race conditions - each cell's processing is independent and complete!
 
 BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
 QC_METRICS_DIR="${RESULTS_DIR}/qc_metrics"
 mkdir -p "${QC_METRICS_DIR}"
 
+echo "Submitting unified single-cell processing array for ${DETECTED_CELL_COUNT} cells..."
+
 sc_unified_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$concat_job_ID \
-    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_unified_processing.sh" \
+    --array=1-${DETECTED_CELL_COUNT} \
+    "${SCRIPTS_DIR}/scripts/CapWGS/sc_extract_preprocess_qc_array.sh" \
     "${BULK_BAM}" \
     "${RESULTS_DIR}/real_cells.txt" \
     "${SC_OUTPUTS_DIR}" \
@@ -263,6 +345,12 @@ sc_unified_job_ID=$(sbatch --parsable \
     1000)
 
 echo "Single-cell unified processing job ID: ${sc_unified_job_ID}"
+echo "Array size: 1-${DETECTED_CELL_COUNT}"
+
+# Wait for unified processing array to complete
+echo "Waiting for single-cell processing array to complete..."
+srun --dependency=afterok:${sc_unified_job_ID} --wait=0 true
+echo "Single-cell processing array complete!"
 
 # All outputs (BAMs, bigwigs, Lorenz curves, QC metrics) created by this single array
 FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
@@ -277,9 +365,14 @@ if [ "$VARIANT_CALLER" != "none" ]; then
     # 2. Submit the variant calling array job with the correct array size
     # Both GATK and bcftools modes use preprocessed BAMs (after MarkDuplicates + BQSR)
 
-    submit_sc_var_job_ID=$(sbatch --parsable --dependency=afterok:$preprocessing_dependency "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
+    submit_sc_var_job_ID=$(sbatch --parsable "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_variant_calling.sh" "${FINAL_SC_BAM_DIR}" "${RESULTS_DIR}/real_cells.txt" "${REFERENCE_GENOME}" "${FINAL_SC_BAM_DIR}" "${SCRIPTS_DIR}" "${VARIANT_CALLER}")
 
     echo "Single cell variant calling submission job ID: ${submit_sc_var_job_ID}"
+
+    # Wait for variant calling to complete
+    echo "Waiting for single-cell variant calling to complete..."
+    srun --dependency=afterok:${submit_sc_var_job_ID} --wait=0 true
+    echo "Single-cell variant calling complete!"
 
     ######################################################################################################
     #### Joint calling
@@ -291,23 +384,68 @@ if [ "$VARIANT_CALLER" != "none" ]; then
     #    - GATK mode: GenomicsDBImport + GenotypeGVCFs per interval
     #    - BCFtools mode: bcftools merge + normalize
 
-    submit_jc_job_ID=$(sbatch --parsable --dependency=afterok:$submit_sc_var_job_ID "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
+    submit_jc_job_ID=$(sbatch --parsable "${SCRIPTS_DIR}/scripts/CapWGS/submit_joint_calling.sh" "${REFERENCE_GENOME}" "${RESULTS_DIR}" "${SC_OUTPUTS_DIR}" "${RESULTS_DIR}" "${SCRIPTS_DIR}" "${SAMPLE_NAME}" "${VARIANT_CALLER}" "${TMP_DIR}")
 
     echo "Joint calling submission job ID: ${submit_jc_job_ID}"
+    echo "(Joint calling is the final output - no wait needed)"
 else
     echo "Variant calling skipped (VARIANT_CALLER=none)"
     echo "Running QC-only mode"
 fi
 
 ######################################################################################################
-#### Compile QC results
+#### Compile QC results (runs inline)
 
-# Compile QC metrics after unified processing array completes
-compile_qc_job_ID=$(sbatch --parsable \
-    --dependency=afterok:${sc_unified_job_ID} \
-    "${SCRIPTS_DIR}/scripts/CapWGS_QC/compile_qc_results.sh" \
-    "${FINAL_SC_BAM_DIR}" \
-    "${QC_METRICS_DIR}" \
-    "${RESULTS_DIR}")
+echo "=========================================="
+echo "Compiling QC Results"
+echo "=========================================="
+echo "Single-cell BAM directory: ${FINAL_SC_BAM_DIR}"
+echo "QC metrics directory: ${QC_METRICS_DIR}"
+echo "Results directory: ${RESULTS_DIR}"
+echo "=========================================="
+echo ""
 
-echo "QC compilation job ID: ${compile_qc_job_ID}"
+# Activate python environment
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate default_jupyter
+
+# Compile Lorenz curves
+echo "Compiling Lorenz curves..."
+LORENZ_OUTPUT="${RESULTS_DIR}/compiled_lorenz_curves.csv"
+
+if ls "${SC_OUTPUTS_DIR}"/*_lorenz.csv 1> /dev/null 2>&1; then
+    python scripts/CapWGS_QC/compile_lorenz.py \
+        "${SC_OUTPUTS_DIR}" \
+        "${LORENZ_OUTPUT}"
+    echo "✓ Lorenz curves compiled: ${LORENZ_OUTPUT}"
+else
+    echo "⚠ No Lorenz curve files found in ${SC_OUTPUTS_DIR}"
+fi
+
+echo ""
+
+# Compile benchmarking QC metrics
+echo "Compiling benchmarking QC metrics..."
+QC_OUTPUT="${RESULTS_DIR}/compiled_qc_metrics.csv"
+
+if ls "${QC_METRICS_DIR}"/*_alignment_metrics.txt 1> /dev/null 2>&1; then
+    python scripts/CapWGS_QC/compile_qc_metrics.py \
+        "${QC_METRICS_DIR}" \
+        "${QC_OUTPUT}"
+    echo "✓ QC metrics compiled: ${QC_OUTPUT}"
+else
+    echo "⚠ No QC metrics files found in ${QC_METRICS_DIR}"
+fi
+
+echo ""
+echo "=========================================="
+echo "QC Compilation Complete!"
+echo "=========================================="
+echo "Output files:"
+if [ -f "${LORENZ_OUTPUT}" ]; then
+    echo "  ✓ ${LORENZ_OUTPUT}"
+fi
+if [ -f "${QC_OUTPUT}" ]; then
+    echo "  ✓ ${QC_OUTPUT}"
+fi
+echo "=========================================="
