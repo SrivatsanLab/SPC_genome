@@ -275,7 +275,10 @@ module load SAMtools
 echo "Merging SAM chunks directly to sorted BAM..."
 # Merge and sort in one streaming operation
 # -c: Combine @RG headers with colliding IDs (don't alter them to be distinct)
-samtools merge -@ 4 -c -b "${RESULTS_DIR}/sam_list.txt" -O SAM - | samtools sort -@ 4 -o "${BAM_FILE}"
+# -f 0x2: Filter for properly paired reads to remove duplicate records from chunking
+samtools merge -@ 4 -c -b "${RESULTS_DIR}/sam_list.txt" -O SAM - | \
+    samtools view -@ 4 -f 0x2 -b - | \
+    samtools sort -@ 4 -o "${BAM_FILE}"
 
 echo "Indexing BAM file..."
 samtools index -@ 4 "${BAM_FILE}"
