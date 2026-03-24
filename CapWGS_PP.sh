@@ -245,6 +245,14 @@ echo "=========================================="
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate spc_genome
 
+# Give filesystem a moment to sync (NFS delay)
+sleep 5
+
+# Debug: show what we're looking for
+echo "Looking for SAM files in: ${TMP_DIR}"
+sam_count=$(ls "${TMP_DIR}"/*.sam 2>/dev/null | wc -l)
+echo "Found ${sam_count} SAM files"
+
 ls "${TMP_DIR}"/*.sam > "${RESULTS_DIR}/sam_list.txt"
 
 BAM_FILE="${DATA_DIR}/${SAMPLE_NAME}.bam"
