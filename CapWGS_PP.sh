@@ -5,6 +5,19 @@
 
 mkdir -p SLURM_outs/
 
+# Function to wait for a SLURM job to complete
+wait_for_job() {
+    local job_id=$1
+    while squeue -j "$job_id" -h -t PENDING,RUNNING 2>/dev/null | grep -q .; do
+        sleep 60
+    done
+    # Check if any tasks failed
+    if sacct -j "$job_id" --format=State -n | grep -q FAILED; then
+        echo "Job $job_id had failures" >&2
+        return 1
+    fi
+}
+
 # Function to parse YAML config file
 parse_yaml() {
     local yaml_file=$1
@@ -231,7 +244,7 @@ echo "Preprocessing array job ID: ${PP_array_ID}"
 
 # Wait for preprocessing array to complete
 echo "Waiting for preprocessing array to complete..."
-srun --dependency=afterok:${PP_array_ID} --wait=0 true
+wait_for_job "${PP_array_ID}"
 echo "Preprocessing array complete!"
 
 ######################################################################################################
@@ -357,7 +370,7 @@ echo "Array size: 1-${DETECTED_CELL_COUNT}"
 
 # Wait for unified processing array to complete
 echo "Waiting for single-cell processing array to complete..."
-srun --dependency=afterok:${sc_unified_job_ID} --wait=0 true
+wait_for_job "${sc_unified_job_ID}"
 echo "Single-cell processing array complete!"
 
 # All outputs (BAMs, bigwigs, Lorenz curves, QC metrics) created by this single array
@@ -379,7 +392,7 @@ if [ "$VARIANT_CALLER" != "none" ]; then
 
     # Wait for variant calling to complete
     echo "Waiting for single-cell variant calling to complete..."
-    srun --dependency=afterok:${submit_sc_var_job_ID} --wait=0 true
+    wait_for_job "${submit_sc_var_job_ID}"
     echo "Single-cell variant calling complete!"
 
     ######################################################################################################
