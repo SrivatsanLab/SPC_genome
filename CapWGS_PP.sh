@@ -245,7 +245,7 @@ echo "=========================================="
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate spc_genome
 
-ls ${TMP_DIR}/*.sam > "${RESULTS_DIR}/sam_list.txt"
+ls "${TMP_DIR}"/*.sam > "${RESULTS_DIR}/sam_list.txt"
 
 BAM_FILE="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
