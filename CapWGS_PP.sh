@@ -237,57 +237,36 @@ concat_job_ID=$(sbatch --parsable --dependency=afterok:$PP_array_ID "${SCRIPTS_D
 echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 ######################################################################################################
-#### Submit unified single cell extraction and preprocessing
+#### Submit unified single cell processing (extraction + preprocessing + QC)
 
-# Extract single cells from concatenated bulk BAM AND run preprocessing (MarkDuplicates + BQSR)
-# This unified approach avoids race conditions by doing both steps in a single array job
-# After preprocessing, raw BAMs are deleted to save disk space
+# Single array job that does EVERYTHING for each cell:
+# 1. Extract reads from bulk BAM
+# 2. MarkDuplicates + BQSR
+# 3. Generate bigwig
+# 4. Generate Lorenz curve
+# 5. Collect QC metrics
+# This eliminates ALL race conditions - each cell's processing is independent and complete!
+
 BULK_BAM="${DATA_DIR}/${SAMPLE_NAME}.bam"
-
-sc_extract_preprocess_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$concat_job_ID \
-    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_extract_and_preprocess.sh" \
-    "${BULK_BAM}" \
-    "${RESULTS_DIR}/real_cells.txt" \
-    "${SC_OUTPUTS_DIR}" \
-    "${REFERENCE_GENOME}" \
-    "${SCRIPTS_DIR}")
-
-echo "Single-cell extraction and preprocessing job ID: ${sc_extract_preprocess_job_ID}"
-
-# All downstream steps use preprocessed BAMs in sc_outputs/
-FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
-preprocessing_dependency=$sc_extract_preprocess_job_ID
-
-######################################################################################################
-#### Submit QC analysis arrays
-
-# Bigwig and Lorenz curve generation (for coverage uniformity assessment)
-# Uses preprocessed BAMs (for both GATK and bcftools modes)
-bigwig_lorenz_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$preprocessing_dependency \
-    "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_bigwig_lorenz.sh" \
-    "${RESULTS_DIR}/real_cells.txt" \
-    "${FINAL_SC_BAM_DIR}" \
-    "${FINAL_SC_BAM_DIR}" \
-    1000)
-
-echo "Bigwig and Lorenz curve generation job ID: ${bigwig_lorenz_job_ID}"
-
-# Benchmarking QC metrics (alignment, GC bias, duplicates, coverage)
-# Uses preprocessed BAMs (needs MarkDuplicates metrics)
 QC_METRICS_DIR="${RESULTS_DIR}/qc_metrics"
 mkdir -p "${QC_METRICS_DIR}"
 
-benchmarking_qc_job_ID=$(sbatch --parsable \
-    --dependency=afterok:$preprocessing_dependency \
-    "${SCRIPTS_DIR}/scripts/CapWGS_QC/submit_benchmarking_qc.sh" \
+sc_unified_job_ID=$(sbatch --parsable \
+    --dependency=afterok:$concat_job_ID \
+    "${SCRIPTS_DIR}/scripts/CapWGS/submit_sc_unified_processing.sh" \
+    "${BULK_BAM}" \
     "${RESULTS_DIR}/real_cells.txt" \
+    "${SC_OUTPUTS_DIR}" \
     "${QC_METRICS_DIR}" \
-    "${REFERENCE_GENOME}/Homo_sapiens_assembly38.fasta" \
-    "${FINAL_SC_BAM_DIR}")
+    "${REFERENCE_GENOME}" \
+    "${SCRIPTS_DIR}" \
+    1000)
 
-echo "Benchmarking QC metrics collection job ID: ${benchmarking_qc_job_ID}"
+echo "Single-cell unified processing job ID: ${sc_unified_job_ID}"
+
+# All outputs (BAMs, bigwigs, Lorenz curves, QC metrics) created by this single array
+FINAL_SC_BAM_DIR="${SC_OUTPUTS_DIR}"
+preprocessing_dependency=$sc_unified_job_ID
 
 ######################################################################################################
 #### Submit single cell variant calling array (skip if variant_caller=none)
@@ -323,9 +302,9 @@ fi
 ######################################################################################################
 #### Compile QC results
 
-# Compile QC metrics after both QC arrays complete
+# Compile QC metrics after unified processing array completes
 compile_qc_job_ID=$(sbatch --parsable \
-    --dependency=afterok:${bigwig_lorenz_job_ID}:${benchmarking_qc_job_ID} \
+    --dependency=afterok:${sc_unified_job_ID} \
     "${SCRIPTS_DIR}/scripts/CapWGS_QC/compile_qc_results.sh" \
     "${FINAL_SC_BAM_DIR}" \
     "${QC_METRICS_DIR}" \
