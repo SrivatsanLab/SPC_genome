@@ -60,7 +60,7 @@ echo "Step 1: Extracting reads for barcode ${BARCODE}..."
 module load SAMtools
 
 samtools view -h "${BULK_BAM}" | \
-    grep -E "^@|CB:Z:${BARCODE}$" | \
+    grep -E "^@|CB:Z:${BARCODE}" | \
     samtools sort -@ 4 -o "${RAW_BAM}"
 
 samtools index "${RAW_BAM}"
