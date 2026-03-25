@@ -17,9 +17,36 @@ BULK_BAM="$1"
 BARCODE_FILE="$2"
 SC_OUTPUT_DIR="$3"
 QC_METRICS_DIR="$4"
-REFERENCE_DIR="$5"
+REFERENCE_INPUT="$5"
 SCRIPTS_DIR="$6"
 BINSIZE="${7:-1000}"  # Bigwig bin size (default: 1000)
+
+# Determine if input is a directory or file, and find the FASTA
+if [ -f "${REFERENCE_INPUT}" ]; then
+    # Direct path to FASTA file
+    REFERENCE="${REFERENCE_INPUT}"
+elif [ -d "${REFERENCE_INPUT}" ]; then
+    # Directory - search for FASTA file in standard locations
+    if [ -f "${REFERENCE_INPUT}/BWAIndex/genome.fa" ]; then
+        REFERENCE="${REFERENCE_INPUT}/BWAIndex/genome.fa"
+    elif [ -f "${REFERENCE_INPUT}/genome.fa" ]; then
+        REFERENCE="${REFERENCE_INPUT}/genome.fa"
+    elif compgen -G "${REFERENCE_INPUT}/BWAIndex/"*.fa > /dev/null 2>&1; then
+        REFERENCE=$(ls "${REFERENCE_INPUT}/BWAIndex/"*.fa 2>/dev/null | head -1)
+    elif compgen -G "${REFERENCE_INPUT}/BWAIndex/"*.fna > /dev/null 2>&1; then
+        REFERENCE=$(ls "${REFERENCE_INPUT}/BWAIndex/"*.fna 2>/dev/null | head -1)
+    elif compgen -G "${REFERENCE_INPUT}/"*.fa > /dev/null 2>&1; then
+        REFERENCE=$(ls "${REFERENCE_INPUT}/"*.fa 2>/dev/null | head -1)
+    elif compgen -G "${REFERENCE_INPUT}/"*.fna > /dev/null 2>&1; then
+        REFERENCE=$(ls "${REFERENCE_INPUT}/"*.fna 2>/dev/null | head -1)
+    else
+        echo "Error: Could not find FASTA file in ${REFERENCE_INPUT}"
+        exit 1
+    fi
+else
+    echo "Error: Reference input is neither file nor directory: ${REFERENCE_INPUT}"
+    exit 1
+fi
 
 # Get the cell barcode for this array task
 BARCODE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$BARCODE_FILE")
@@ -27,6 +54,7 @@ BARCODE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$BARCODE_FILE")
 echo "=========================================="
 echo "Processing cell: ${BARCODE}"
 echo "Array task ID: ${SLURM_ARRAY_TASK_ID}"
+echo "Reference: ${REFERENCE}"
 echo "=========================================="
 echo ""
 
@@ -35,7 +63,6 @@ RAW_BAM="${SC_OUTPUT_DIR}/${BARCODE}.bam"
 PREPROCESSED_BAM="${SC_OUTPUT_DIR}/${BARCODE}.preprocessed.bam"
 BIGWIG="${SC_OUTPUT_DIR}/${BARCODE}.bw"
 LORENZ_CSV="${SC_OUTPUT_DIR}/${BARCODE}_lorenz.csv"
-REFERENCE="${REFERENCE_DIR}/genome.fa"
 
 # QC output files
 ALIGNMENT_METRICS="${QC_METRICS_DIR}/${BARCODE}_alignment_metrics.txt"
