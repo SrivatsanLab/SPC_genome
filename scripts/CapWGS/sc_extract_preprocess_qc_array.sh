@@ -165,7 +165,7 @@ eval "$(micromamba shell hook --shell bash)"
 micromamba activate default_jupyter
 
 python "${SCRIPTS_DIR}/scripts/CapWGS_QC/lorenz.py" \
-    "${PREPROCESSED_BAM}" "${LORENZ_CSV}"
+    "${BIGWIG}" -o "${LORENZ_CSV}"
 
 echo "✓ Lorenz curve complete"
 echo ""
