@@ -71,6 +71,8 @@ DUPLICATE_METRICS="${QC_METRICS_DIR}/${BARCODE}_duplicate_metrics.txt"
 WGS_METRICS="${QC_METRICS_DIR}/${BARCODE}_wgs_metrics.txt"
 
 # Known sites for BQSR (if available)
+# Get directory containing reference FASTA for checking dbsnp
+REFERENCE_DIR=$(dirname "${REFERENCE}")
 KNOWN_SITES=""
 if [ -f "${REFERENCE_DIR}/dbsnp.vcf.gz" ]; then
     KNOWN_SITES="--known-sites ${REFERENCE_DIR}/dbsnp.vcf.gz"
