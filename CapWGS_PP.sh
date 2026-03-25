@@ -463,6 +463,29 @@ else
 fi
 
 echo ""
+
+# Generate Lander-Waterman plot
+echo "Generating Lander-Waterman coverage plot..."
+LW_PLOT="${RESULTS_DIR}/lander_waterman_coverage.png"
+
+if [ -f "${QC_OUTPUT}" ]; then
+    # Get genome length from reference
+    GENOME_LENGTH=$(samtools faidx "${REFERENCE_GENOME}" 2>/dev/null && awk '{sum+=$2} END {print sum}' "${REFERENCE_GENOME}.fai")
+
+    if [ -n "${GENOME_LENGTH}" ] && [ "${GENOME_LENGTH}" -gt 0 ]; then
+        python scripts/utils/plot_lander_waterman.py \
+            "${QC_OUTPUT}" \
+            "${GENOME_LENGTH}" \
+            "${LW_PLOT}"
+        echo "✓ Lander-Waterman plot generated: ${LW_PLOT}"
+    else
+        echo "⚠ Could not determine genome length - skipping Lander-Waterman plot"
+    fi
+else
+    echo "⚠ No compiled QC metrics - skipping Lander-Waterman plot"
+fi
+
+echo ""
 echo "=========================================="
 echo "QC Compilation Complete!"
 echo "=========================================="
@@ -472,5 +495,8 @@ if [ -f "${LORENZ_OUTPUT}" ]; then
 fi
 if [ -f "${QC_OUTPUT}" ]; then
     echo "  ✓ ${QC_OUTPUT}"
+fi
+if [ -f "${LW_PLOT}" ]; then
+    echo "  ✓ ${LW_PLOT}"
 fi
 echo "=========================================="
