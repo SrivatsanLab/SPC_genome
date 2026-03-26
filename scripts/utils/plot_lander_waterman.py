@@ -7,11 +7,11 @@ vs proportion of reference genome covered (Y-axis) with the theoretical
 Lander-Waterman curve overlay.
 
 Usage:
-    python plot_lander_waterman.py <qc_csv> <genome_length> <output_plot> [--experiment-col COLUMN]
+    python plot_lander_waterman.py <qc_csv> <reference_fasta> <output_plot> [--experiment-col COLUMN]
 
 Arguments:
     qc_csv: Path to compiled QC metrics CSV (from compile_qc_metrics.py)
-    genome_length: Reference genome length in base pairs
+    reference_fasta: Path to reference genome FASTA file
     output_plot: Path for output plot (e.g., lander_waterman.png)
     --experiment-col: Optional column name for grouping/coloring points (default: None)
 """
@@ -23,6 +23,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+
+def get_genome_length_from_fasta(fasta_path):
+    """
+    Calculate total genome length from FASTA index (.fai file)
+
+    Args:
+        fasta_path: Path to FASTA file (will look for .fai index)
+
+    Returns:
+        Total genome length in base pairs
+    """
+    fai_path = Path(str(fasta_path) + '.fai')
+
+    if not fai_path.exists():
+        raise FileNotFoundError(f"FASTA index not found: {fai_path}\nRun: samtools faidx {fasta_path}")
+
+    total_length = 0
+    with open(fai_path, 'r') as f:
+        for line in f:
+            fields = line.strip().split('\t')
+            if len(fields) >= 2:
+                total_length += int(fields[1])  # Second column is sequence length
+
+    return total_length
 
 def plot_lander_waterman(qc_csv, genome_length, output_plot, experiment_col=None):
     """
@@ -122,9 +146,8 @@ if __name__ == "__main__":
         help='Path to compiled QC metrics CSV'
     )
     parser.add_argument(
-        'genome_length',
-        type=int,
-        help='Reference genome length in base pairs'
+        'reference_fasta',
+        help='Path to reference genome FASTA file'
     )
     parser.add_argument(
         'output_plot',
@@ -143,14 +166,19 @@ if __name__ == "__main__":
         print(f"ERROR: QC CSV file not found: {args.qc_csv}")
         sys.exit(1)
 
-    if args.genome_length <= 0:
-        print(f"ERROR: Genome length must be positive: {args.genome_length}")
+    if not Path(args.reference_fasta).exists():
+        print(f"ERROR: Reference FASTA file not found: {args.reference_fasta}")
         sys.exit(1)
+
+    # Get genome length from FASTA index
+    print(f"Reading genome length from: {args.reference_fasta}.fai")
+    genome_length = get_genome_length_from_fasta(args.reference_fasta)
+    print(f"Total genome length: {genome_length:,} bp ({genome_length/1e6:.2f} Mb)")
 
     # Generate plot
     plot_lander_waterman(
         args.qc_csv,
-        args.genome_length,
+        genome_length,
         args.output_plot,
         args.experiment_col
     )

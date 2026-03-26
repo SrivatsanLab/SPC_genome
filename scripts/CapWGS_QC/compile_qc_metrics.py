@@ -47,7 +47,11 @@ def parse_picard_metrics(filepath):
     return metrics
 
 def compile_qc_metrics(qc_dir):
-    """Compile all QC metrics from a directory into a single DataFrame"""
+    """Compile all QC metrics from a directory into a single DataFrame
+
+    Args:
+        qc_dir: Directory containing Picard QC metrics and gini coefficients
+    """
     qc_path = Path(qc_dir)
 
     if not qc_path.exists():
@@ -66,14 +70,14 @@ def compile_qc_metrics(qc_dir):
     results = []
 
     for alignment_file in sorted(alignment_files):
-        # Extract sample name
-        sample = alignment_file.stem.replace('_alignment_metrics', '')
+        # Extract barcode from filename
+        barcode = alignment_file.stem.replace('_alignment_metrics', '')
 
-        # Parse all metrics files for this sample
-        sample_metrics = {'sample': sample}
+        # Parse all metrics files for this barcode
+        sample_metrics = {'barcode': barcode}
 
         # Alignment metrics
-        align_file = qc_path / f"{sample}_alignment_metrics.txt"
+        align_file = qc_path / f"{barcode}_alignment_metrics.txt"
         if align_file.exists():
             align_data = parse_picard_metrics(align_file)
             # Extract key alignment metrics
@@ -87,7 +91,7 @@ def compile_qc_metrics(qc_dir):
                 sample_metrics['total_reads'] = align_data['PF_READS']
 
         # GC metrics
-        gc_summary_file = qc_path / f"{sample}_gc_summary.txt"
+        gc_summary_file = qc_path / f"{barcode}_gc_summary.txt"
         if gc_summary_file.exists():
             gc_data = parse_picard_metrics(gc_summary_file)
             # Extract GC content
@@ -99,7 +103,7 @@ def compile_qc_metrics(qc_dir):
                 sample_metrics['gc_dropout'] = gc_data['GC_DROPOUT']
 
         # Duplicate metrics
-        dup_file = qc_path / f"{sample}_duplicate_metrics.txt"
+        dup_file = qc_path / f"{barcode}_duplicate_metrics.txt"
         if dup_file.exists():
             dup_data = parse_picard_metrics(dup_file)
             if 'PERCENT_DUPLICATION' in dup_data:
@@ -110,7 +114,7 @@ def compile_qc_metrics(qc_dir):
                 sample_metrics['read_pair_duplicates'] = dup_data['READ_PAIR_DUPLICATES']
 
         # WGS metrics
-        wgs_file = qc_path / f"{sample}_wgs_metrics.txt"
+        wgs_file = qc_path / f"{barcode}_wgs_metrics.txt"
         if wgs_file.exists():
             wgs_data = parse_picard_metrics(wgs_file)
             if 'MEAN_COVERAGE' in wgs_data:
@@ -121,6 +125,15 @@ def compile_qc_metrics(qc_dir):
                 sample_metrics['pct_1x'] = wgs_data['PCT_1X']
             if 'PCT_10X' in wgs_data:
                 sample_metrics['pct_10x'] = wgs_data['PCT_10X']
+
+        # Gini coefficient (from Lorenz curve analysis)
+        gini_file = qc_path / f"{barcode}_gini.txt"
+        if gini_file.exists():
+            with open(gini_file, 'r') as f:
+                try:
+                    sample_metrics['gini_coefficient'] = float(f.readline().strip())
+                except (ValueError, IOError):
+                    pass
 
         results.append(sample_metrics)
 

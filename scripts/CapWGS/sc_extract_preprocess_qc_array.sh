@@ -62,13 +62,14 @@ echo ""
 RAW_BAM="${SC_OUTPUT_DIR}/${BARCODE}.bam"
 PREPROCESSED_BAM="${SC_OUTPUT_DIR}/${BARCODE}.preprocessed.bam"
 BIGWIG="${SC_OUTPUT_DIR}/${BARCODE}.bw"
-LORENZ_CSV="${SC_OUTPUT_DIR}/${BARCODE}_lorenz.csv"
 
-# QC output files
+# QC output files (all in qc_metrics directory)
 ALIGNMENT_METRICS="${QC_METRICS_DIR}/${BARCODE}_alignment_metrics.txt"
 GC_METRICS="${QC_METRICS_DIR}/${BARCODE}_gc_metrics.txt"
 DUPLICATE_METRICS="${QC_METRICS_DIR}/${BARCODE}_duplicate_metrics.txt"
 WGS_METRICS="${QC_METRICS_DIR}/${BARCODE}_wgs_metrics.txt"
+LORENZ_CSV="${QC_METRICS_DIR}/${BARCODE}_lorenz.csv"
+GINI_TXT="${QC_METRICS_DIR}/${BARCODE}_gini.txt"
 
 # Known sites for BQSR (if available)
 # Get directory containing reference FASTA for checking dbsnp
@@ -188,15 +189,15 @@ echo ""
 # Step 5: Generate Lorenz curve
 ##########################################################################################################################
 
-echo "Step 5: Generating Lorenz curve..."
+echo "Step 5: Generating Lorenz curve and Gini coefficient..."
 
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate default_jupyter
 
 python "${SCRIPTS_DIR}/scripts/CapWGS_QC/lorenz.py" \
-    "${BIGWIG}" -o "${LORENZ_CSV}"
+    "${BIGWIG}" -o "${LORENZ_CSV}" --gini-output "${GINI_TXT}"
 
-echo "✓ Lorenz curve complete"
+echo "✓ Lorenz curve and Gini coefficient complete"
 echo ""
 
 ##########################################################################################################################
