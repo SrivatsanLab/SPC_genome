@@ -24,16 +24,39 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-def get_genome_length_from_fasta(fasta_path):
+def get_genome_length_from_fasta(fasta_input):
     """
     Calculate total genome length from FASTA index (.fai file)
 
     Args:
-        fasta_path: Path to FASTA file (will look for .fai index)
+        fasta_input: Path to FASTA file or directory containing FASTA file
 
     Returns:
-        Total genome length in base pairs
+        tuple: (total genome length in base pairs, path to FASTA file used)
     """
+    input_path = Path(fasta_input)
+
+    # If input is a directory, find the FASTA file inside
+    if input_path.is_dir():
+        # Search for FASTA files with index
+        fasta_candidates = []
+
+        # Check for .fa files in root and BWAIndex subdirectory
+        for pattern in ['*.fa', '*.fna', 'BWAIndex/*.fa', 'BWAIndex/*.fna']:
+            fasta_candidates.extend(input_path.glob(pattern))
+
+        if not fasta_candidates:
+            raise FileNotFoundError(
+                f"No FASTA files (.fa or .fna) found in directory: {input_path}\n"
+                f"Searched patterns: *.fa, *.fna, BWAIndex/*.fa, BWAIndex/*.fna"
+            )
+
+        # Use the first FASTA file found
+        fasta_path = fasta_candidates[0]
+    else:
+        fasta_path = input_path
+
+    # Check for .fai index
     fai_path = Path(str(fasta_path) + '.fai')
 
     if not fai_path.exists():
@@ -46,7 +69,7 @@ def get_genome_length_from_fasta(fasta_path):
             if len(fields) >= 2:
                 total_length += int(fields[1])  # Second column is sequence length
 
-    return total_length
+    return total_length, fasta_path
 
 def plot_lander_waterman(qc_csv, genome_length, output_plot, experiment_col=None):
     """
@@ -167,12 +190,13 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not Path(args.reference_fasta).exists():
-        print(f"ERROR: Reference FASTA file not found: {args.reference_fasta}")
+        print(f"ERROR: Reference FASTA file or directory not found: {args.reference_fasta}")
         sys.exit(1)
 
     # Get genome length from FASTA index
-    print(f"Reading genome length from: {args.reference_fasta}.fai")
-    genome_length = get_genome_length_from_fasta(args.reference_fasta)
+    print(f"Reading genome length from: {args.reference_fasta}")
+    genome_length, fasta_used = get_genome_length_from_fasta(args.reference_fasta)
+    print(f"FASTA file: {fasta_used}")
     print(f"Total genome length: {genome_length:,} bp ({genome_length/1e6:.2f} Mb)")
 
     # Generate plot

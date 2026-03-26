@@ -107,12 +107,63 @@ elif [ -d "${genome}" ]; then
         # UCSC genome.fa in root directory
         BWA_INDEX="${genome}/genome.fa"
     else
-        echo "Error: Could not find BWA index in directory ${genome}"
-        echo "Tried:"
-        echo "  ${genome}/BWAIndex/genome.fa"
-        echo "  ${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
-        echo "  ${genome}/genome.fa"
-        exit 1
+        # Search for any .fa or .fna file with BWA index (.amb file)
+        found=false
+
+        # Check BWAIndex subdirectory for .fa files
+        for fasta in "${genome}/BWAIndex/"*.fa; do
+            if [ -f "${fasta}.amb" ]; then
+                BWA_INDEX="${fasta}"
+                found=true
+                break
+            fi
+        done
+
+        # Check BWAIndex subdirectory for .fna files
+        if [ "$found" = false ]; then
+            for fasta in "${genome}/BWAIndex/"*.fna; do
+                if [ -f "${fasta}.amb" ]; then
+                    BWA_INDEX="${fasta}"
+                    found=true
+                    break
+                fi
+            done
+        fi
+
+        # Check root directory for .fa files
+        if [ "$found" = false ]; then
+            for fasta in "${genome}/"*.fa; do
+                if [ -f "${fasta}.amb" ]; then
+                    BWA_INDEX="${fasta}"
+                    found=true
+                    break
+                fi
+            done
+        fi
+
+        # Check root directory for .fna files
+        if [ "$found" = false ]; then
+            for fasta in "${genome}/"*.fna; do
+                if [ -f "${fasta}.amb" ]; then
+                    BWA_INDEX="${fasta}"
+                    found=true
+                    break
+                fi
+            done
+        fi
+
+        if [ "$found" = false ]; then
+            echo "Error: Could not find BWA index in directory ${genome}"
+            echo "Tried:"
+            echo "  ${genome}/BWAIndex/genome.fa"
+            echo "  ${genome}/BWAIndex/Homo_sapiens_assembly38.fasta.64"
+            echo "  ${genome}/genome.fa"
+            echo "  ${genome}/BWAIndex/*.fa (with .amb index)"
+            echo "  ${genome}/BWAIndex/*.fna (with .amb index)"
+            echo "  ${genome}/*.fa (with .amb index)"
+            echo "  ${genome}/*.fna (with .amb index)"
+            exit 1
+        fi
     fi
 else
     echo "Error: Genome parameter is neither a file nor directory: ${genome}"

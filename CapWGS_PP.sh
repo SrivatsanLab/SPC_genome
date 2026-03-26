@@ -434,17 +434,17 @@ echo ""
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate default_jupyter
 
-# Compile Lorenz curves
+# Compile Lorenz curves (now stored in QC metrics directory)
 echo "Compiling Lorenz curves..."
 LORENZ_OUTPUT="${RESULTS_DIR}/compiled_lorenz_curves.csv"
 
-if ls "${SC_OUTPUTS_DIR}"/*_lorenz.csv 1> /dev/null 2>&1; then
+if ls "${QC_METRICS_DIR}"/*_lorenz.csv 1> /dev/null 2>&1; then
     python scripts/CapWGS_QC/compile_lorenz.py \
-        "${SC_OUTPUTS_DIR}" \
+        "${QC_METRICS_DIR}" \
         "${LORENZ_OUTPUT}"
     echo "✓ Lorenz curves compiled: ${LORENZ_OUTPUT}"
 else
-    echo "⚠ No Lorenz curve files found in ${SC_OUTPUTS_DIR}"
+    echo "⚠ No Lorenz curve files found in ${QC_METRICS_DIR}"
 fi
 
 echo ""
