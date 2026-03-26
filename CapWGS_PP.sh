@@ -469,11 +469,14 @@ echo "Generating Lander-Waterman coverage plot..."
 LW_PLOT="${RESULTS_DIR}/lander_waterman_coverage.png"
 
 if [ -f "${QC_OUTPUT}" ]; then
-    python scripts/utils/plot_lander_waterman.py \
+    if python scripts/utils/plot_lander_waterman.py \
         "${QC_OUTPUT}" \
         "${REFERENCE_GENOME}" \
-        "${LW_PLOT}"
-    echo "✓ Lander-Waterman plot generated: ${LW_PLOT}"
+        "${LW_PLOT}"; then
+        echo "✓ Lander-Waterman plot generated: ${LW_PLOT}"
+    else
+        echo "⚠ Lander-Waterman plot generation failed (check log above for errors)"
+    fi
 else
     echo "⚠ No compiled QC metrics - skipping Lander-Waterman plot"
 fi
