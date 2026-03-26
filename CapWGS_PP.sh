@@ -439,10 +439,17 @@ echo "Compiling Lorenz curves..."
 LORENZ_OUTPUT="${RESULTS_DIR}/compiled_lorenz_curves.csv"
 
 if ls "${QC_METRICS_DIR}"/*_lorenz.csv 1> /dev/null 2>&1; then
-    python scripts/CapWGS_QC/compile_lorenz.py \
+    if python scripts/CapWGS_QC/compile_lorenz.py \
         "${QC_METRICS_DIR}" \
-        "${LORENZ_OUTPUT}"
-    echo "✓ Lorenz curves compiled: ${LORENZ_OUTPUT}"
+        "${LORENZ_OUTPUT}"; then
+        if [ -f "${LORENZ_OUTPUT}" ]; then
+            echo "✓ Lorenz curves compiled: ${LORENZ_OUTPUT}"
+        else
+            echo "⚠ Lorenz curve compilation completed but output file not found"
+        fi
+    else
+        echo "⚠ Lorenz curve compilation failed (check log above for errors)"
+    fi
 else
     echo "⚠ No Lorenz curve files found in ${QC_METRICS_DIR}"
 fi
@@ -454,10 +461,17 @@ echo "Compiling benchmarking QC metrics..."
 QC_OUTPUT="${RESULTS_DIR}/compiled_qc_metrics.csv"
 
 if ls "${QC_METRICS_DIR}"/*_alignment_metrics.txt 1> /dev/null 2>&1; then
-    python scripts/CapWGS_QC/compile_qc_metrics.py \
+    if python scripts/CapWGS_QC/compile_qc_metrics.py \
         "${QC_METRICS_DIR}" \
-        "${QC_OUTPUT}"
-    echo "✓ QC metrics compiled: ${QC_OUTPUT}"
+        "${QC_OUTPUT}"; then
+        if [ -f "${QC_OUTPUT}" ]; then
+            echo "✓ QC metrics compiled: ${QC_OUTPUT}"
+        else
+            echo "⚠ QC metrics compilation completed but output file not found"
+        fi
+    else
+        echo "⚠ QC metrics compilation failed (check log above for errors)"
+    fi
 else
     echo "⚠ No QC metrics files found in ${QC_METRICS_DIR}"
 fi
