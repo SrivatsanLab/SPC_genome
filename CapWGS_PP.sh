@@ -272,13 +272,61 @@ BAM_FILE="${DATA_DIR}/${SAMPLE_NAME}.bam"
 
 module load SAMtools
 
-echo "Merging SAM chunks directly to sorted BAM..."
-# Merge and sort in one streaming operation
-# -c: Combine @RG headers with colliding IDs (don't alter them to be distinct)
-# -f 0x2: Filter for properly paired reads to remove duplicate records from chunking
-samtools merge -@ 4 -c -b "${RESULTS_DIR}/sam_list.txt" -O SAM - | \
+echo "=========================================="
+echo "Two-Stage Parallel SAM Merge"
+echo "=========================================="
+
+# Stage 1: Create groups of SAM files for parallel merging
+MERGE_GROUP_SIZE=20  # Number of SAMs per group (configurable)
+GROUP_DIR="${TMP_DIR}/merge_groups"
+INTERMEDIATE_DIR="${TMP_DIR}/intermediate_bams"
+
+echo "Stage 1: Preparing parallel merge groups..."
+mkdir -p "${GROUP_DIR}"
+mkdir -p "${INTERMEDIATE_DIR}"
+
+# Split sam_list.txt into groups
+split -l ${MERGE_GROUP_SIZE} -d -a 2 "${RESULTS_DIR}/sam_list.txt" "${GROUP_DIR}/group_"
+
+# Count groups created
+N_GROUPS=$(ls ${GROUP_DIR}/group_* 2>/dev/null | wc -l)
+echo "  Created ${N_GROUPS} merge groups of ~${MERGE_GROUP_SIZE} SAMs each"
+echo ""
+
+# Stage 2: Submit parallel merge array
+echo "Stage 2: Submitting parallel merge array (${N_GROUPS} jobs)..."
+parallel_merge_job=$(sbatch --parsable --array=1-${N_GROUPS} \
+    "${SCRIPTS_DIR}/scripts/CapWGS/parallel_merge_array.sh" \
+    "${GROUP_DIR}" \
+    "${INTERMEDIATE_DIR}" \
+    "${SAMPLE_NAME}")
+
+echo "  Parallel merge job ID: ${parallel_merge_job}"
+echo "  Waiting for parallel merge to complete..."
+wait_for_job "${parallel_merge_job}"
+echo "  ✓ Parallel merge complete!"
+echo ""
+
+# Stage 3: Final merge of intermediate BAMs
+echo "Stage 3: Final merge and sort..."
+ls "${INTERMEDIATE_DIR}"/*.bam > "${RESULTS_DIR}/intermediate_bam_list.txt"
+
+N_INTERMEDIATE=$(wc -l < "${RESULTS_DIR}/intermediate_bam_list.txt")
+echo "  Merging ${N_INTERMEDIATE} intermediate BAMs into final sorted BAM..."
+
+# Final merge with filtering and sorting
+# -c: Combine @RG headers with colliding IDs (preserve read groups)
+# -f 0x2: Filter for properly paired reads (belt-and-suspenders, should already be filtered)
+samtools merge -@ 4 -c -b "${RESULTS_DIR}/intermediate_bam_list.txt" -O BAM - | \
     samtools view -@ 4 -f 0x2 -b - | \
     samtools sort -@ 4 -o "${BAM_FILE}"
+
+echo "  ✓ Final BAM created: ${BAM_FILE}"
+echo ""
+echo "=========================================="
+echo "Two-Stage Merge Complete!"
+echo "=========================================="
+echo ""
 
 echo "Indexing BAM file..."
 samtools index -@ 4 "${BAM_FILE}"
