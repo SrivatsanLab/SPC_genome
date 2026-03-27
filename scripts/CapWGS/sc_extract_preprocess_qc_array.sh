@@ -194,7 +194,7 @@ echo "Step 5: Generating Lorenz curve and Gini coefficient..."
 eval "$(micromamba shell hook --shell bash)"
 micromamba activate default_jupyter
 
-python "${SCRIPTS_DIR}/scripts/CapWGS_QC/lorenz.py" \
+python "${SCRIPTS_DIR}/scripts/CapWGS/lorenz.py" \
     "${BIGWIG}" -o "${LORENZ_CSV}" --gini-output "${GINI_TXT}"
 
 echo "✓ Lorenz curve and Gini coefficient complete"

@@ -488,7 +488,7 @@ echo "Compiling Lorenz curves..."
 LORENZ_OUTPUT="${RESULTS_DIR}/compiled_lorenz_curves.csv"
 
 if ls "${QC_METRICS_DIR}"/*_lorenz.csv 1> /dev/null 2>&1; then
-    if python scripts/CapWGS_QC/compile_lorenz.py \
+    if python scripts/CapWGS/compile_lorenz.py \
         "${QC_METRICS_DIR}" \
         "${LORENZ_OUTPUT}"; then
         if [ -f "${LORENZ_OUTPUT}" ]; then
@@ -510,7 +510,7 @@ echo "Compiling benchmarking QC metrics..."
 QC_OUTPUT="${RESULTS_DIR}/compiled_qc_metrics.csv"
 
 if ls "${QC_METRICS_DIR}"/*_alignment_metrics.txt 1> /dev/null 2>&1; then
-    if python scripts/CapWGS_QC/compile_qc_metrics.py \
+    if python scripts/CapWGS/compile_qc_metrics.py \
         "${QC_METRICS_DIR}" \
         "${QC_OUTPUT}"; then
         if [ -f "${QC_OUTPUT}" ]; then
