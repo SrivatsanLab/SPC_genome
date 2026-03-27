@@ -2,6 +2,7 @@
 #SBATCH --job-name=Preprocessing
 #SBATCH --output=SLURM_outs/%x_%j.out
 #SBATCH -c 2
+#SBATCH -t 6-00:00:00
 
 mkdir -p SLURM_outs/
 
