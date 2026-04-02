@@ -2,6 +2,41 @@
 
 ---
 
+## Known Bugs and Fixes
+
+### Bug: Path duplication in single-cell extraction (March 31, 2026)
+
+**Issue:** When `OUTPUT_NAME` contains path separators (e.g., `worm_CapGTA_L4_pilot/L4_3_UDI7`), the BAM path construction in `CapGTA_PP.sh` incorrectly duplicates the path component.
+
+**Root cause:** Lines 186-187 in `CapGTA_PP.sh`:
+```bash
+DNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_dna.bam"
+RNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_rna.bam"
+```
+
+When:
+- `OUTPUT_NAME="worm_CapGTA_L4_pilot/L4_3_UDI7"`
+- `DATA_DIR="./data/worm_CapGTA_L4_pilot/L4_3_UDI7"`
+
+This expands to:
+- `DNA_BAM="./data/worm_CapGTA_L4_pilot/L4_3_UDI7/worm_CapGTA_L4_pilot/L4_3_UDI7_dna.bam"` ❌
+
+But actual file is at:
+- `./data/worm_CapGTA_L4_pilot/L4_3_UDI7/L4_3_UDI7_dna.bam` ✓
+
+**Workaround:** Use `basename` to extract just the sample name:
+```bash
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+DNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_dna.bam"
+RNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_rna.bam"
+```
+
+**Status:** ✅ **FIXED** (commit dd539af on fix-overhang-validation branch, March 31, 2026)
+
+**Affected jobs:** L4 worm pilot experiments failed at single-cell extraction step. Resubmission script created at `bin/resubmit_sc_extraction_L4_pilot.sh` with corrected paths.
+
+---
+
 ## Phase 2: Statistical Algorithm for RNA Classification (Feb 25, 2026)
 
 ### Algorithm Design
