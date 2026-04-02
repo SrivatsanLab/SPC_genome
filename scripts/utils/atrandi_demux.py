@@ -54,12 +54,13 @@ def find_max_distance(true_BCs):
         max_distances[key] =  min(distances)-2
     return max_distances
 
-def correction(sequence, true_overhangs, true_BCs, max_distances):
+def correction(sequence, true_overhangs, true_BCs, max_distances, ignore_overhangs=False):
     """
-    sequence       : The DNA sequence from read2 (string)
-    true_overhangs : The overhang sequences (dictionary)
-    true_BCs       : The barcodes (dictionary from get_bcs())
-    max_distances  : The maximum permissible levenshtein distances (dictionary from find_max_distance())
+    sequence         : The DNA sequence from read2 (string)
+    true_overhangs   : The overhang sequences (dictionary)
+    true_BCs         : The barcodes (dictionary from get_bcs())
+    max_distances    : The maximum permissible levenshtein distances (dictionary from find_max_distance())
+    ignore_overhangs : If True, skip overhang sequence validation (boolean, default False)
     """
     # Parse index sequence
     parts = [sequence[0:8], sequence[8:12], sequence[12:20], sequence[20:24], sequence[24:32], sequence[32:36], sequence[36:44], sequence[44:45]]
@@ -78,12 +79,13 @@ def correction(sequence, true_overhangs, true_BCs, max_distances):
     
     bc_distances = {}
     for l in ["D","C","B","A"]:
-        
+
         # overhang sequences:
-        overhang_dist = distance(seq_overhangs[l], true_overhangs[l])
-        if overhang_dist > 1:
-            return None
-        
+        if not ignore_overhangs:
+            overhang_dist = distance(seq_overhangs[l], true_overhangs[l])
+            if overhang_dist > 1:
+                return None
+
         # barcode distances
         distances = pairwise_levenshtein_distances(seq_bcs[l], true_BCs[l])
         bc_dist = min(distances)
@@ -100,16 +102,17 @@ def correction(sequence, true_overhangs, true_BCs, max_distances):
         return None
         
 
-def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
+def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
     """
     Read in R1 and R2 files, correct barcodes, and write corrected sequences.
-    R1_file        : input read1 fastq, gzipped
-    R2_file        : input read2 fastq, gzipped
-    R1_output      : path for read1 output, should end with .fastq.gz
-    R2_output      : path for read2 output, should end with .fastq.gz
-    true_BCs       : dictionary of true A,B,C,D barcodes from get_bcs()
-    true_overhangs : dictionary of true A,B,C,D overhangs
-    
+    R1_file          : input read1 fastq, gzipped
+    R2_file          : input read2 fastq, gzipped
+    R1_output        : path for read1 output, should end with .fastq.gz
+    R2_output        : path for read2 output, should end with .fastq.gz
+    true_BCs         : dictionary of true A,B,C,D barcodes from get_bcs()
+    true_overhangs   : dictionary of true A,B,C,D overhangs
+    ignore_overhangs : if True, skip overhang validation (boolean, default False)
+
     """
     
     max_distances = find_max_distance(true_BCs)
@@ -137,7 +140,7 @@ def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_ove
 
                 read2_seq = read2_lines[1].strip()
 
-                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
+                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances, ignore_overhangs) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
                 if corrected == None:
                     # print("barcode not mapped")
                     pass
@@ -167,16 +170,17 @@ def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_ove
         
         print(f"proportion of reads with barcode mapped: {mapped_reads/total_reads}")
         
-def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
+def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
     """
     Read in UNZIPPED R1 and R2 files, correct barcodes, and write corrected sequences.
-    R1_file        : input read1 fastq
-    R2_file        : input read2 fastq
-    R1_output      : path for read1 output
-    R2_output      : path for read2 output
-    true_BCs       : dictionary of true A,B,C,D barcodes from get_bcs()
-    true_overhangs : dictionary of true A,B,C,D overhangs
-    
+    R1_file          : input read1 fastq
+    R2_file          : input read2 fastq
+    R1_output        : path for read1 output
+    R2_output        : path for read2 output
+    true_BCs         : dictionary of true A,B,C,D barcodes from get_bcs()
+    true_overhangs   : dictionary of true A,B,C,D overhangs
+    ignore_overhangs : if True, skip overhang validation (boolean, default False)
+
     """
     
     max_distances = find_max_distance(true_BCs)
@@ -203,7 +207,7 @@ def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overha
 
                 read2_seq = read2_lines[1].strip()
 
-                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
+                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances, ignore_overhangs) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
                 if corrected == None:
                     # print("barcode not mapped")
                     pass
@@ -233,14 +237,15 @@ def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overha
         
         print(f"proportion of reads with barcode mapped: {mapped_reads/total_reads}")
 
-def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
+def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
     """
     Read in R1 and R2 files, correct barcodes, and write corrected sequences.
-    R1_file        : input read1 fastq, gzipped
-    R2_file        : input read2 fastq, gzipped
-    true_BCs       : dictionary of true A,B,C,D barcodes from get_bcs()
-    true_overhangs : dictionary of true A,B,C,D overhangs
-    
+    R1_file          : input read1 fastq, gzipped
+    R2_file          : input read2 fastq, gzipped
+    true_BCs         : dictionary of true A,B,C,D barcodes from get_bcs()
+    true_overhangs   : dictionary of true A,B,C,D overhangs
+    ignore_overhangs : if True, skip overhang validation (boolean, default False)
+
     """
     
     max_distances = find_max_distance(true_BCs)
@@ -267,7 +272,7 @@ def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
 
                 read2_seq = read2_lines[1].strip()
 
-                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
+                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances, ignore_overhangs) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
                 if corrected == None:
                     R1out.writelines(read1_lines)
                     R2out.writelines(read2_lines)
@@ -277,14 +282,15 @@ def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
                 
                 pbar.update(1)  # Update progress bar
 
-def rejects_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs):
+def rejects_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
     """
     Read in R1 and R2 files, correct barcodes, and write corrected sequences.
-    R1_file        : input read1 fastq, gzipped
-    R2_file        : input read2 fastq, gzipped
-    true_BCs       : dictionary of true A,B,C,D barcodes from get_bcs()
-    true_overhangs : dictionary of true A,B,C,D overhangs
-    
+    R1_file          : input read1 fastq, gzipped
+    R2_file          : input read2 fastq, gzipped
+    true_BCs         : dictionary of true A,B,C,D barcodes from get_bcs()
+    true_overhangs   : dictionary of true A,B,C,D overhangs
+    ignore_overhangs : if True, skip overhang validation (boolean, default False)
+
     """
     
     max_distances = find_max_distance(true_BCs)
@@ -312,7 +318,7 @@ def rejects_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs)
 
                 read2_seq = read2_lines[1].strip()
 
-                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
+                corrected = correction(read2_seq, true_overhangs, true_BCs, max_distances, ignore_overhangs) # if barcode maps, corrected = (corrected_index,genomic_seq). else it will = None
                 if corrected == None:
                     R1out.writelines(read1_lines)
                     R2out.writelines(read2_lines)
@@ -341,6 +347,8 @@ def main():
                         help="Are the input fastqs gzipped (True/False, default=True)")
     parser.add_argument("--rejects", action='store_true',
                         help="add this flag to run in 'rejects mode' which writes reads whose barcodes don't map to separate files: R[12]_unmapped.fastq.gz")
+    parser.add_argument("--ignore-overhangs", action='store_true',
+                        help="Skip overhang sequence validation (use when constant sequences have systematic errors)")
     
     # Parse the arguments
     args = parser.parse_args()
@@ -369,15 +377,15 @@ def main():
     # if running in rejects mode, only print rejects
     if args.rejects:
         if gzip:
-            rejects_gz(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs)
-        else: 
-            rejects_gz(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs)
+            rejects_gz(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs, args.ignore_overhangs)
+        else:
+            rejects(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs, args.ignore_overhangs)
     else:
         if gzip:
-            correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs)
+            correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs, args.ignore_overhangs)
 
         else:
-            correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs)
+            correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_barcodes, true_overhangs, args.ignore_overhangs)
 
 if __name__ == "__main__":
     main()
