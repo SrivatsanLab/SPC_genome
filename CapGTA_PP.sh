@@ -183,8 +183,10 @@ echo "Concatenation and cell detection job ID: ${concat_job_ID}"
 
 # Extract single cells from concatenated DNA and RNA bulk BAMs, then run variant calling and RNA counting
 # Outputs SC BAMs and VCFs to data/{sample}/sc_outputs/, final results to results/{sample}/
-DNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_dna.bam"
-RNA_BAM="${DATA_DIR}/${OUTPUT_NAME}_rna.bam"
+# Use basename to avoid path duplication when OUTPUT_NAME contains path separators
+SAMPLE_NAME=$(basename "${OUTPUT_NAME}")
+DNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_dna.bam"
+RNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_rna.bam"
 
 sc_extraction_job_ID=$(sbatch --parsable --dependency=afterok:$concat_job_ID "${SCRIPTS_DIR}/scripts/CapGTA/sc_from_bam_gta.sh" \
     "${RESULTS_DIR}/real_cells.txt" \
