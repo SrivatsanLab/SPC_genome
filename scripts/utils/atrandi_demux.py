@@ -123,18 +123,15 @@ def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_ove
     ignore_overhangs : if True, skip overhang validation (boolean, default False)
 
     """
-    
+
     max_distances = find_max_distance(true_BCs)
-    
+
     with gzip.open(R1_file, "rt") as R1in, gzip.open(R1_output, "wt") as R1out, gzip.open(R2_file, "rt") as R2in, gzip.open(R2_output, "wt") as R2out:
-        
+
         mapped_reads = 0
         total_reads = 0
-        
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
-        
-        with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
+
+        with tqdm(desc="Processing reads", unit="read pair") as pbar:
             
             while True:
                 # Read 4 lines from each file (1 FASTQ record)
@@ -191,18 +188,15 @@ def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overha
     ignore_overhangs : if True, skip overhang validation (boolean, default False)
 
     """
-    
+
     max_distances = find_max_distance(true_BCs)
-    
+
     with open(R1_file, "r") as R1in, open(R1_output, "w") as R1out, open(R2_file, "r") as R2in, open(R2_output, "w") as R2out:
-        
+
         mapped_reads = 0
         total_reads = 0
-        
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
-        
-        with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
+
+        with tqdm(desc="Processing reads", unit="read pair") as pbar:
             while True:
                 # Read 4 lines from each file (1 FASTQ record)
                 read1_lines = [R1in.readline() for _ in range(4)]
@@ -256,17 +250,14 @@ def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ig
     ignore_overhangs : if True, skip overhang validation (boolean, default False)
 
     """
-    
+
     max_distances = find_max_distance(true_BCs)
     with open(R1_file, "r") as R1in, open(R1_output, "w") as R1out, open(R2_file, "r") as R2in, open(R2_output, "w") as R2out:
-        
+
         mapped_reads = 0
         total_reads = 0
-        
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
-        
-        with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
+
+        with tqdm(desc="Processing reads", unit="read pair") as pbar:
             
             while True:
                 # Read 4 lines from each file (1 FASTQ record)
@@ -301,18 +292,15 @@ def rejects_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs,
     ignore_overhangs : if True, skip overhang validation (boolean, default False)
 
     """
-    
+
     max_distances = find_max_distance(true_BCs)
-    
+
     with gzip.open(R1_file, "rt") as R1in, gzip.open(R1_output, "wt") as R1out, gzip.open(R2_file, "rt") as R2in, gzip.open(R2_output, "wt") as R2out:
-        
+
         mapped_reads = 0
         total_reads = 0
-        
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
-        
-        with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
+
+        with tqdm(desc="Processing reads", unit="read pair") as pbar:
             
             while True:
                 # Read 4 lines from each file (1 FASTQ record)
