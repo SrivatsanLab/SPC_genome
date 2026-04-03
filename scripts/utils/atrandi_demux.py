@@ -9,6 +9,44 @@ from Levenshtein import distance
 from tqdm import tqdm
 import argparse
 
+
+def estimate_reads_gz(filepath, sample_reads=10000):
+    """Estimate total reads in a gzipped FASTQ by decompressing a small sample,
+    measuring how many compressed bytes were consumed, and extrapolating."""
+    compressed_size = os.path.getsize(filepath)
+    with open(filepath, 'rb') as raw:
+        dc = gzip.GzipFile(fileobj=raw)
+        sample_lines = sample_reads * 4
+        lines_read = 0
+        for line in dc:
+            lines_read += 1
+            if lines_read >= sample_lines:
+                break
+        compressed_bytes_used = raw.tell()
+    if lines_read == 0 or compressed_bytes_used == 0:
+        return 0
+    lines_per_compressed_byte = lines_read / compressed_bytes_used
+    estimated_lines = lines_per_compressed_byte * compressed_size
+    return int(estimated_lines) // 4
+
+
+def estimate_reads(filepath, sample_reads=10000):
+    """Estimate total reads in an uncompressed FASTQ from file size."""
+    file_size = os.path.getsize(filepath)
+    with open(filepath, 'r') as f:
+        sample_lines = sample_reads * 4
+        sample_bytes = 0
+        for i, line in enumerate(f):
+            if i >= sample_lines:
+                break
+            sample_bytes += len(line)
+        lines_read = i + 1 if i >= 0 else 0
+    if lines_read == 0:
+        return 0
+    bytes_per_line = sample_bytes / lines_read
+    estimated_lines = file_size / bytes_per_line
+    return int(estimated_lines) // 4
+
 def get_bcs(fileA,fileB,fileC,fileD):
     true_BCs={}
     true_BCs['A'] = []
@@ -117,13 +155,12 @@ def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, correction_dict, t
 
     """
 
+    total_reads_estimated = estimate_reads_gz(R1_file)
+
     with gzip.open(R1_file, "rt") as R1in, gzip.open(R1_output, "wt") as R1out, gzip.open(R2_file, "rt") as R2in, gzip.open(R2_output, "wt") as R2out:
 
         mapped_reads = 0
         total_reads = 0
-
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
 
         with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
 
@@ -183,13 +220,12 @@ def correct_fastqs(R1_file, R2_file, R1_output, R2_output, correction_dict, true
 
     """
 
+    total_reads_estimated = estimate_reads(R1_file)
+
     with open(R1_file, "r") as R1in, open(R1_output, "w") as R1out, open(R2_file, "r") as R2in, open(R2_output, "w") as R2out:
 
         mapped_reads = 0
         total_reads = 0
-
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
 
         with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
             while True:
@@ -246,13 +282,12 @@ def rejects(R1_file, R2_file, R1_output, R2_output, correction_dict, true_overha
 
     """
 
+    total_reads_estimated = estimate_reads(R1_file)
+
     with open(R1_file, "r") as R1in, open(R1_output, "w") as R1out, open(R2_file, "r") as R2in, open(R2_output, "w") as R2out:
 
         mapped_reads = 0
         total_reads = 0
-
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
 
         with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
 
@@ -290,13 +325,12 @@ def rejects_gz(R1_file, R2_file, R1_output, R2_output, correction_dict, true_ove
 
     """
 
+    total_reads_estimated = estimate_reads_gz(R1_file)
+
     with gzip.open(R1_file, "rt") as R1in, gzip.open(R1_output, "wt") as R1out, gzip.open(R2_file, "rt") as R2in, gzip.open(R2_output, "wt") as R2out:
 
         mapped_reads = 0
         total_reads = 0
-
-        total_reads_estimated = total_reads or sum(1 for _ in R1in) // 4
-        R1in.seek(0)  # Reset file pointer after estimating total reads
 
         with tqdm(total=total_reads_estimated, desc="Processing reads", unit="read pair") as pbar:
 
