@@ -3,9 +3,18 @@
 import gzip
 import numpy as np
 import sys
-from Levenshtein import distance
 from tqdm import tqdm
 import argparse
+
+def hamming_distance(s1, s2):
+    """
+    Calculate Hamming distance between two equal-length strings.
+    Hamming distance counts the number of positions at which symbols differ.
+    For fixed-length sequences, this is equivalent to Levenshtein distance and conceptually correct.
+    """
+    if len(s1) != len(s2):
+        raise ValueError(f"Strings must be equal length for Hamming distance: {len(s1)} != {len(s2)}")
+    return sum(c1 != c2 for c1, c2 in zip(s1, s2))
 
 def get_bcs(fileA,fileB,fileC,fileD):
     true_BCs={}
@@ -29,14 +38,14 @@ def get_bcs(fileA,fileB,fileC,fileD):
         for line in fin:
             line = line.strip()
             true_BCs['D'].append(line)
-            
+
     return true_BCs
 
-def pairwise_levenshtein_distances(string, vector_of_strings):
+def pairwise_hamming_distances(string, vector_of_strings):
     """
-    Calculate pairwise levenshtein distances between a string and a vector of strings.
+    Calculate pairwise Hamming distances between a string and a vector of strings.
     """
-    return [distance(string, seq) for seq in vector_of_strings]
+    return [hamming_distance(string, seq) for seq in vector_of_strings]
     
 def find_max_distance(true_BCs):
     BC_set_distances = {}
@@ -45,7 +54,7 @@ def find_max_distance(true_BCs):
         for i, string1 in enumerate(strings):
             for j, string2 in enumerate(strings):
                 if i < j:  # Avoid duplicate pairs
-                    dist = distance(string1, string2)
+                    dist = hamming_distance(string1, string2)
                     distances.append(dist)
         BC_set_distances[key] = distances
 
@@ -59,7 +68,7 @@ def correction(sequence, true_overhangs, true_BCs, max_distances, ignore_overhan
     sequence         : The DNA sequence from read2 (string)
     true_overhangs   : The overhang sequences (dictionary)
     true_BCs         : The barcodes (dictionary from get_bcs())
-    max_distances    : The maximum permissible levenshtein distances (dictionary from find_max_distance())
+    max_distances    : The maximum permissible Hamming distances (dictionary from find_max_distance())
     ignore_overhangs : If True, skip overhang sequence validation (boolean, default False)
     """
     # Parse index sequence
@@ -74,28 +83,28 @@ def correction(sequence, true_overhangs, true_BCs, max_distances, ignore_overhan
                "B":parts[4],
                "A":parts[6]}
 
-    # compute levenshtein distances, perform error correction
+    # compute Hamming distances, perform error correction
     corrected_index = ""
-    
+
     bc_distances = {}
     for l in ["D","C","B","A"]:
 
         # overhang sequences:
         if not ignore_overhangs:
-            overhang_dist = distance(seq_overhangs[l], true_overhangs[l])
+            overhang_dist = hamming_distance(seq_overhangs[l], true_overhangs[l])
             if overhang_dist > 1:
                 return None
 
         # barcode distances
-        distances = pairwise_levenshtein_distances(seq_bcs[l], true_BCs[l])
+        distances = pairwise_hamming_distances(seq_bcs[l], true_BCs[l])
         bc_dist = min(distances)
         bc_distances[l] = bc_dist
         corected_bc = true_BCs[l][np.argmin(distances)]
         corrected_index += corected_bc+true_overhangs[l]
-    
+
     # Return corrected index, genomic sequence
     genomic_seq = sequence[46:]
-    
+
     if bc_distances['A'] <= max_distances['A'] and bc_distances['B'] <= max_distances['B'] and bc_distances['C'] <= max_distances['C'] and bc_distances['D'] <= max_distances['D']:
         return corrected_index,genomic_seq
     else:
