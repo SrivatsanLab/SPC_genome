@@ -43,7 +43,8 @@ READ2="${TMP_DIR}/read2_chunk_${chunk}"
 python $demux_scr $READ1 $READ2 $barcodes \
   --R1_output "${TMP_DIR}/corr_read1_chunk_${chunk}" \
   --R2_output "${TMP_DIR}/corr_read2_chunk_${chunk}" \
-  --gzip False
+  --gzip False \
+  --ignore-overhangs
 
 # Delete uncorrected fastqs
 rm $READ1 $READ2
