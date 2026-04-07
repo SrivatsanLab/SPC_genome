@@ -238,7 +238,7 @@ fi
 ######################################################################################################
 #### Submit preprocessing array and wait for completion
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}" "${RESULTS_DIR}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
@@ -246,6 +246,16 @@ echo "Preprocessing array job ID: ${PP_array_ID}"
 echo "Waiting for preprocessing array to complete..."
 wait_for_job "${PP_array_ID}"
 echo "Preprocessing array complete!"
+
+# Compile preprocessing statistics from per-chunk JSON files
+echo "Compiling preprocessing statistics..."
+if python3 "${SCRIPTS_DIR}/scripts/CapWGS/compile_preprocessing_stats.py" \
+    "${RESULTS_DIR}/preprocessing_stats" \
+    "${RESULTS_DIR}"; then
+    echo "Preprocessing stats compiled successfully."
+else
+    echo "Warning: preprocessing stats compilation failed (non-fatal)"
+fi
 
 ######################################################################################################
 #### Concatenate SAM files, create BAM, and detect real cells (runs inline)
@@ -314,12 +324,27 @@ ls "${INTERMEDIATE_DIR}"/*.bam > "${RESULTS_DIR}/intermediate_bam_list.txt"
 N_INTERMEDIATE=$(wc -l < "${RESULTS_DIR}/intermediate_bam_list.txt")
 echo "  Merging ${N_INTERMEDIATE} intermediate BAMs into final sorted BAM..."
 
-# Final merge with filtering and sorting
+# Final merge and sort (unfiltered first for accurate flagstat)
 # -c: Combine @RG headers with colliding IDs (preserve read groups)
-# -f 0x2: Filter for properly paired reads (belt-and-suspenders, should already be filtered)
+UNFILTERED_BAM="${BAM_FILE%.bam}.unfiltered.bam"
 samtools merge -@ 4 -c -b "${RESULTS_DIR}/intermediate_bam_list.txt" -O BAM - | \
-    samtools view -@ 4 -f 0x2 -b - | \
+    samtools sort -@ 4 -o "${UNFILTERED_BAM}"
+
+echo "  ✓ Unfiltered BAM created: ${UNFILTERED_BAM}"
+
+# Run flagstat on unfiltered BAM to get true mapping rate
+echo "Running samtools flagstat (unfiltered)..."
+FLAGSTAT_FILE="${RESULTS_DIR}/flagstat.txt"
+samtools flagstat -@ 4 "${UNFILTERED_BAM}" > "${FLAGSTAT_FILE}"
+echo "Flagstat written to: ${FLAGSTAT_FILE}"
+cat "${FLAGSTAT_FILE}"
+echo ""
+
+# Filter for properly paired reads and create final BAM
+echo "Filtering for properly paired reads..."
+samtools view -@ 4 -f 0x2 -b "${UNFILTERED_BAM}" | \
     samtools sort -@ 4 -o "${BAM_FILE}"
+rm "${UNFILTERED_BAM}"
 
 echo "  ✓ Final BAM created: ${BAM_FILE}"
 echo ""
@@ -330,6 +355,7 @@ echo ""
 
 echo "Indexing BAM file..."
 samtools index -@ 4 "${BAM_FILE}"
+echo ""
 
 echo "Computing read counts per barcode..."
 samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${RESULTS_DIR}/readcounts.csv"
@@ -557,4 +583,25 @@ fi
 if [ -f "${LW_PLOT}" ]; then
     echo "  ✓ ${LW_PLOT}"
 fi
+echo "=========================================="
+
+######################################################################################################
+#### Generate HTML Dashboard
+
+echo ""
+echo "Generating HTML dashboard..."
+DASHBOARD="${RESULTS_DIR}/dashboard.html"
+
+if python3 "${SCRIPTS_DIR}/scripts/CapWGS/generate_dashboard.py" \
+    "${RESULTS_DIR}" \
+    --output "${DASHBOARD}" \
+    --title "${OUTPUT_NAME}"; then
+    echo "✓ Dashboard generated: ${DASHBOARD}"
+else
+    echo "⚠ Dashboard generation failed (non-fatal)"
+fi
+
+echo ""
+echo "=========================================="
+echo "Pipeline Complete!"
 echo "=========================================="

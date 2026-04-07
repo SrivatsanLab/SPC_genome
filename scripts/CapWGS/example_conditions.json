@@ -1,0 +1,5 @@
+{
+    "Control": ["A1", "A2", "B1", "B2"],
+    "Treatment_A": ["C1", "C2", "D1", "D2"],
+    "Treatment_B": ["E1", "E2", "F1", "F2"]
+}

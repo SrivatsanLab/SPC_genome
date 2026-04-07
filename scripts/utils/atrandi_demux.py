@@ -174,6 +174,8 @@ def correct_fastqs_gz(R1_file, R2_file, R1_output, R2_output, true_BCs, true_ove
                 
                 pbar.update(1)  # Update progress bar
         
+        print(f"total_reads: {total_reads}")
+        print(f"mapped_reads: {mapped_reads}")
         print(f"proportion of reads with barcode mapped: {mapped_reads/total_reads}")
         
 def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
@@ -238,6 +240,8 @@ def correct_fastqs(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overha
                 
                 pbar.update(1)  # Update progress bar
         
+        print(f"total_reads: {total_reads}")
+        print(f"mapped_reads: {mapped_reads}")
         print(f"proportion of reads with barcode mapped: {mapped_reads/total_reads}")
 
 def rejects(R1_file, R2_file, R1_output, R2_output, true_BCs, true_overhangs, ignore_overhangs=False):
