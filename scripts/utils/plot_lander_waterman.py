@@ -7,11 +7,11 @@ vs proportion of reference genome covered (Y-axis) with the theoretical
 Lander-Waterman curve overlay.
 
 Usage:
-    python plot_lander_waterman.py <qc_csv> <reference_fasta> <output_plot> [--experiment-col COLUMN]
+    python plot_lander_waterman.py <qc_csv> <genome_length_or_fasta> <output_plot> [--experiment-col COLUMN]
 
 Arguments:
     qc_csv: Path to compiled QC metrics CSV (from compile_qc_metrics.py)
-    reference_fasta: Path to reference genome FASTA file
+    genome_length_or_fasta: Either genome length in bp (integer) OR path to reference FASTA
     output_plot: Path for output plot (e.g., lander_waterman.png)
     --experiment-col: Optional column name for grouping/coloring points (default: None)
 """
@@ -24,39 +24,16 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-def get_genome_length_from_fasta(fasta_input):
+def get_genome_length_from_fasta(fasta_path):
     """
     Calculate total genome length from FASTA index (.fai file)
 
     Args:
-        fasta_input: Path to FASTA file or directory containing FASTA file
+        fasta_path: Path to FASTA file
 
     Returns:
-        tuple: (total genome length in base pairs, path to FASTA file used)
+        Total genome length in base pairs
     """
-    input_path = Path(fasta_input)
-
-    # If input is a directory, find the FASTA file inside
-    if input_path.is_dir():
-        # Search for FASTA files with index
-        fasta_candidates = []
-
-        # Check for .fa files in root and BWAIndex subdirectory
-        for pattern in ['*.fa', '*.fna', 'BWAIndex/*.fa', 'BWAIndex/*.fna']:
-            fasta_candidates.extend(input_path.glob(pattern))
-
-        if not fasta_candidates:
-            raise FileNotFoundError(
-                f"No FASTA files (.fa or .fna) found in directory: {input_path}\n"
-                f"Searched patterns: *.fa, *.fna, BWAIndex/*.fa, BWAIndex/*.fna"
-            )
-
-        # Use the first FASTA file found
-        fasta_path = fasta_candidates[0]
-    else:
-        fasta_path = input_path
-
-    # Check for .fai index
     fai_path = Path(str(fasta_path) + '.fai')
 
     if not fai_path.exists():
@@ -69,7 +46,7 @@ def get_genome_length_from_fasta(fasta_input):
             if len(fields) >= 2:
                 total_length += int(fields[1])  # Second column is sequence length
 
-    return total_length, fasta_path
+    return total_length
 
 def plot_lander_waterman(qc_csv, genome_length, output_plot, experiment_col=None):
     """
@@ -87,13 +64,16 @@ def plot_lander_waterman(qc_csv, genome_length, output_plot, experiment_col=None
     # Calculate reads per megabase
     df['reads_per_mb'] = (df['total_reads'] / genome_length) * 1e6
 
+    # Get mean read length from data
+    mean_read_length = df['mean_read_length'].mean()
+
     # Generate theoretical Lander-Waterman curve
     # L-W: fraction covered = 1 - exp(-coverage)
     # coverage = (reads * read_length) / genome_length
-    # For reads_per_mb: coverage = reads_per_mb / 1e6 * genome_length / genome_length
-    #                             = reads_per_mb / 1e6
+    # reads_per_mb = (reads / genome_length) * 1e6
+    # So: coverage = (reads_per_mb / 1e6) * read_length
     x_theory = np.linspace(0, df['reads_per_mb'].max() * 1.05, 1000)
-    y_theory = 1 - np.exp(-x_theory / 1e6)  # x is reads/Mb, coverage = reads/Mb / 1e6
+    y_theory = 1 - np.exp(-x_theory * mean_read_length / 1e6)
 
     # Create figure
     fig, ax = plt.subplots(1, 1, figsize=(14, 8))
@@ -156,6 +136,7 @@ def plot_lander_waterman(qc_csv, genome_length, output_plot, experiment_col=None
     # Print summary statistics
     print(f"\nSummary statistics:")
     print(f"  Total cells: {len(df)}")
+    print(f"  Mean read length: {mean_read_length:.1f} bp")
     print(f"  Reads per Mb range: {df['reads_per_mb'].min():.2f} - {df['reads_per_mb'].max():.2f}")
     print(f"  Coverage range: {df['pct_1x'].min():.4f} - {df['pct_1x'].max():.4f}")
     print(f"  Mean coverage: {df['pct_1x'].mean():.4f}")
@@ -169,8 +150,8 @@ if __name__ == "__main__":
         help='Path to compiled QC metrics CSV'
     )
     parser.add_argument(
-        'reference_fasta',
-        help='Path to reference genome FASTA file'
+        'genome_length_or_fasta',
+        help='Either genome length in bp (integer) OR path to reference genome FASTA file'
     )
     parser.add_argument(
         'output_plot',
@@ -189,15 +170,25 @@ if __name__ == "__main__":
         print(f"ERROR: QC CSV file not found: {args.qc_csv}")
         sys.exit(1)
 
-    if not Path(args.reference_fasta).exists():
-        print(f"ERROR: Reference FASTA file or directory not found: {args.reference_fasta}")
-        sys.exit(1)
+    # Determine if genome_length_or_fasta is an integer or a file path
+    genome_length = None
+    try:
+        # Try to parse as integer first (simple genome length)
+        genome_length = int(args.genome_length_or_fasta)
+        if genome_length <= 0:
+            print(f"ERROR: Genome length must be positive: {genome_length}")
+            sys.exit(1)
+        print(f"Using provided genome length: {genome_length:,} bp ({genome_length/1e6:.2f} Mb)")
+    except ValueError:
+        # Not an integer, treat as file path
+        fasta_path = Path(args.genome_length_or_fasta)
+        if not fasta_path.exists():
+            print(f"ERROR: Reference FASTA file not found: {args.genome_length_or_fasta}")
+            sys.exit(1)
 
-    # Get genome length from FASTA index
-    print(f"Reading genome length from: {args.reference_fasta}")
-    genome_length, fasta_used = get_genome_length_from_fasta(args.reference_fasta)
-    print(f"FASTA file: {fasta_used}")
-    print(f"Total genome length: {genome_length:,} bp ({genome_length/1e6:.2f} Mb)")
+        print(f"Reading genome length from FASTA index: {fasta_path}")
+        genome_length = get_genome_length_from_fasta(fasta_path)
+        print(f"Total genome length: {genome_length:,} bp ({genome_length/1e6:.2f} Mb)")
 
     # Generate plot
     plot_lander_waterman(
