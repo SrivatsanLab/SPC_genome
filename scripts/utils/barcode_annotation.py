@@ -1,10 +1,28 @@
+#!/usr/bin/env python3
+"""
+DataFrame-based barcode annotation for interactive analysis.
+
+Provides high-level pandas integration for annotating cells by experimental
+conditions encoded in combinatorial barcodes. Designed for use in Jupyter
+notebooks and interactive analysis.
+
+For pipeline/CLI use, see: scripts/CapWGS/assign_conditions.py
+"""
+
+import pandas as pd
+from barcode_core import (
+    BC_SLICES, POSITION_COLUMNS, build_barcode_lookup,
+    extract_barcode_position, assign_conditions
+)
+
+
 def annotate_barcodes(df, barcode_table, column_name, conditions, barcode_set='A'):
     """
     Annotate a dataframe whose index contains combinatorial cell barcodes.
-    
+
     Cell barcodes have the format (45 bases):
         {bcD}AGGA{bcC}ACTC{bcB}AAGG{bcA}A
-    
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -21,85 +39,87 @@ def annotate_barcodes(df, barcode_table, column_name, conditions, barcode_set='A
     barcode_set : str
         Which barcode position to match against: 'A', 'B', 'C', or 'D'.
         Default 'A' since conditions are typically encoded there.
-    
+
     Returns
     -------
     pd.DataFrame
         Copy of df with the new column added.
+
+    Examples
+    --------
+    >>> # Annotate by rows in position A
+    >>> df = annotate_barcodes(
+    ...     df, bcs,
+    ...     column_name='amplification_method',
+    ...     conditions={
+    ...         'PTA': ['A', 'B', 'C', 'D'],
+    ...         'mMDA': ['E', 'F', 'G', 'H'],
+    ...     },
+    ...     barcode_set='A'
+    ... )
+
+    >>> # Annotate by specific wells in position D
+    >>> df = annotate_barcodes(
+    ...     df, bcs,
+    ...     column_name='replicate',
+    ...     conditions={
+    ...         'Rep1': ['A10', 'B10'],
+    ...         'Rep2': ['A11', 'B11'],
+    ...     },
+    ...     barcode_set='D'
+    ... )
     """
-    # Define barcode positions within the 45-base string
-    # {bcD}AGGA{bcC}ACTC{bcB}AAGG{bcA}A
-    # 0-7  8-11 12-19 20-23 24-31 32-35 36-43 44
-    bc_slices = {
-        'D': slice(0, 8),
-        'C': slice(12, 20),
-        'B': slice(24, 32),
-        'A': slice(36, 44),
-    }
-    
-    bc_slice = bc_slices[barcode_set]
-    
-    # Map barcode_set letter to column range in the table
-    set_to_cols = {
-        'A': [1, 2, 3],
-        'B': [4, 5, 6],
-        'C': [7, 8, 9],
-        'D': [10, 11, 12],
-    }
-    valid_cols = set_to_cols[barcode_set]
-    
-    # Build lookup: barcode_seq -> condition
-    barcode_to_condition = {}
-    
-    for condition, wells in conditions.items():
-        seqs = set()
-        for w in wells:
-            if isinstance(w, int):
-                if w not in valid_cols:
-                    raise ValueError(
-                        f"Column {w} is not in barcode set {barcode_set} "
-                        f"(valid columns: {valid_cols})"
-                    )
-                seqs.update(barcode_table[w].values)
-            elif isinstance(w, str) and len(w) == 1:
-                for c in valid_cols:
-                    seqs.add(barcode_table.loc[w, c])
-            elif isinstance(w, str):
-                row = w[0]
-                col = int(w[1:])
-                if col not in valid_cols:
-                    raise ValueError(
-                        f"Well {w} column {col} is not in barcode set {barcode_set} "
-                        f"(valid columns: {valid_cols})"
-                    )
-                seqs.add(barcode_table.loc[row, col])
-            else:
-                raise ValueError(f"Unrecognized well spec: {w}")
-        
-        for seq in seqs:
-            if seq in barcode_to_condition:
-                raise ValueError(
-                    f"Barcode {seq} assigned to both "
-                    f"'{barcode_to_condition[seq]}' and '{condition}'"
-                )
-            barcode_to_condition[seq] = condition
-    
-    # Extract the relevant barcode from each cell and look up condition
+    # Build lookup using core utilities
+    lookup = build_barcode_lookup(conditions, barcode_table, barcode_set, warn=False)
+
+    # Assign conditions to all cells
+    cell_barcodes = list(df.index)
+    assignments = assign_conditions(cell_barcodes, lookup, barcode_set)
+
+    # Add as new column
     result = df.copy()
-    result[column_name] = [
-        barcode_to_condition.get(cell[bc_slice])
-        for cell in result.index
-    ]
+    result[column_name] = [assignments[bc] for bc in result.index]
+
     return result
 
+
 def add_qc(df, path):
+    """Add QC metrics from compiled CSV to DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with cell barcodes as index
+    path : str
+        Path to compiled_qc_metrics.csv
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined DataFrame with QC columns added
+    """
     qc_df = pd.read_csv(path, index_col='sample')
     qc_df = qc_df.loc[df.index]
     qc_df.rename_axis(index="sample", inplace=True)
-    
+
     return pd.concat([df, qc_df], axis=1)
 
+
 def ginis(df, path):
+    """Load gini coefficients from individual text files.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with cell barcodes as index
+    path : str
+        Directory containing {barcode}_gini.txt files
+
+    Returns
+    -------
+    list
+        Gini coefficients in same order as df.index
+    """
     ginis = []
     for name in df.index:
         with open(f"{path}/{name}_gini.txt", 'r') as fin:

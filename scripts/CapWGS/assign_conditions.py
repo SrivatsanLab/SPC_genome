@@ -16,8 +16,11 @@ The conditions config is a simple JSON file mapping condition names to wells:
 Wells are specified as row letter + column number (1-3 only, since position A
 uses columns 1-3 of the 8x12 plate). Row letters A-H, columns 1-3.
 
+This is a CLI tool designed for pipeline automation and dashboard generation.
+For interactive DataFrame annotation in notebooks, see: scripts/utils/barcode_annotation.py
+
 Usage:
-    python3 assign_conditions.py <conditions.json> <barcode_map.csv> <real_cells.txt> \
+    python3 assign_conditions.py <conditions.json> <barcode_map.csv> <real_cells.txt> \\
         --output conditions_assignment.csv
 
     # Or use from Python:
@@ -28,100 +31,32 @@ Usage:
 import argparse
 import csv
 import json
+import os
 import sys
 
+# Add utils to path for barcode_core import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'utils'))
 
-# Barcode position A within the 45-base combinatorial barcode string:
-# {bcD}AGGA{bcC}ACTC{bcB}AAGG{bcA}A
-# 0-7  8-11 12-19 20-23 24-31 32-35 36-43 44
-BC_A_SLICE = slice(36, 44)
-
-# Position A uses plate columns 1-3
-VALID_COLS = [1, 2, 3]
+from barcode_core import (
+    load_barcode_map_dict, build_barcode_lookup, assign_conditions
+)
 
 
-def load_barcode_map(map_csv):
-    """Load the 8x12 barcode plate map.
-
-    Returns dict: (row_letter, col_int) -> barcode_sequence
-    """
-    plate = {}
-    with open(map_csv) as f:
-        reader = csv.reader(f)
-        header = next(reader)
-        cols = [int(c) for c in header[1:]]
-        for row in reader:
-            row_letter = row[0]
-            for i, col in enumerate(cols):
-                plate[(row_letter, col)] = row[i + 1]
-    return plate
-
-
-def build_barcode_to_condition(config, plate):
-    """Build a lookup from barcode-A subsequence -> condition name.
-
-    Args:
-        config: dict mapping condition names to lists of well strings (e.g. "A1")
-        plate: dict from load_barcode_map
-
-    Returns:
-        dict: barcode_subsequence -> condition_name
-    """
-    lookup = {}
-    for condition, wells in config.items():
-        for w in wells:
-            if not isinstance(w, str) or len(w) < 2:
-                print("Warning: unrecognized well spec: {}".format(w), file=sys.stderr)
-                continue
-
-            row_letter = w[0].upper()
-            try:
-                col = int(w[1:])
-            except ValueError:
-                print("Warning: can't parse column from well '{}'"
-                      .format(w), file=sys.stderr)
-                continue
-
-            if col not in VALID_COLS:
-                print("Warning: well {} column {} not valid for barcode position A "
-                      "(valid: {})".format(w, col, VALID_COLS), file=sys.stderr)
-                continue
-
-            key = (row_letter, col)
-            if key not in plate:
-                print("Warning: well {} not found in plate map".format(w),
-                      file=sys.stderr)
-                continue
-
-            seq = plate[key]
-            if seq in lookup:
-                print("Warning: barcode {} (well {}) already assigned to '{}', "
-                      "overwriting with '{}'".format(seq, w, lookup[seq], condition),
-                      file=sys.stderr)
-            lookup[seq] = condition
-
-    return lookup
-
-
-def assign_conditions_to_barcodes(config, barcode_map_path, cell_barcodes):
+def assign_conditions_to_barcodes(config, barcode_map_path, cell_barcodes, position='A'):
     """Assign conditions to a list of cell barcodes.
 
     Args:
         config: dict mapping condition names to lists of well strings
         barcode_map_path: path to barcode map CSV (barcodes/map.csv)
         cell_barcodes: list of 45-base cell barcode strings
+        position: barcode position to use (default: 'A')
 
     Returns:
         dict: cell_barcode -> condition_name (or 'Unassigned')
     """
-    plate = load_barcode_map(barcode_map_path)
-    lookup = build_barcode_to_condition(config, plate)
-
-    assignments = {}
-    for barcode in cell_barcodes:
-        subseq = barcode[BC_A_SLICE]
-        assignments[barcode] = lookup.get(subseq, 'Unassigned')
-
+    plate = load_barcode_map_dict(barcode_map_path)
+    lookup = build_barcode_lookup(config, plate, position, warn=True)
+    assignments = assign_conditions(cell_barcodes, lookup, position)
     return assignments
 
 
@@ -139,6 +74,9 @@ def main():
                         help='real_cells.txt (one barcode per line)')
     parser.add_argument('--output', '-o', required=True,
                         help='Output CSV file (barcode, condition)')
+    parser.add_argument('--position', default='A',
+                        choices=['A', 'B', 'C', 'D'],
+                        help='Barcode position to use for conditions (default: A)')
     args = parser.parse_args()
 
     with open(args.conditions_json) as f:
@@ -147,7 +85,9 @@ def main():
     with open(args.real_cells) as f:
         barcodes = [line.strip() for line in f if line.strip()]
 
-    assignments = assign_conditions_to_barcodes(config, args.barcode_map, barcodes)
+    assignments = assign_conditions_to_barcodes(
+        config, args.barcode_map, barcodes, args.position
+    )
 
     with open(args.output, 'w', newline='') as f:
         writer = csv.writer(f)
