@@ -19,7 +19,8 @@ SC_OUTPUT_DIR="$3"
 QC_METRICS_DIR="$4"
 REFERENCE_INPUT="$5"
 SCRIPTS_DIR="$6"
-BINSIZE="${7:-1000}"  # Bigwig bin size (default: 1000)
+BINSIZE="${7:-1000}"          # Bigwig bin size (default: 1000)
+KNOWN_SITES_DIR="${8:-}"      # Known sites directory (optional)
 
 # Determine if input is a directory or file, and find the FASTA
 if [ -f "${REFERENCE_INPUT}" ]; then
@@ -71,12 +72,30 @@ WGS_METRICS="${QC_METRICS_DIR}/${BARCODE}_wgs_metrics.txt"
 LORENZ_CSV="${QC_METRICS_DIR}/${BARCODE}_lorenz.csv"
 GINI_TXT="${QC_METRICS_DIR}/${BARCODE}_gini.txt"
 
-# Known sites for BQSR (if available)
-# Get directory containing reference FASTA for checking dbsnp
-REFERENCE_DIR=$(dirname "${REFERENCE}")
-KNOWN_SITES=""
-if [ -f "${REFERENCE_DIR}/dbsnp.vcf.gz" ]; then
-    KNOWN_SITES="--known-sites ${REFERENCE_DIR}/dbsnp.vcf.gz"
+# Known sites for BQSR
+# Source the detection utility
+source "${SCRIPTS_DIR}/scripts/utils/detect_known_sites.sh"
+
+# Determine which directory to search
+if [ -n "${KNOWN_SITES_DIR}" ]; then
+    # User specified a known sites directory
+    echo "User-specified known sites directory: ${KNOWN_SITES_DIR}"
+    SEARCH_DIR="${KNOWN_SITES_DIR}"
+else
+    # Fall back to reference directory
+    REFERENCE_DIR=$(dirname "${REFERENCE}")
+    echo "Searching for known sites in reference directory: ${REFERENCE_DIR}"
+    SEARCH_DIR="${REFERENCE_DIR}"
+fi
+
+# Detect known sites files
+if detect_known_sites "${SEARCH_DIR}"; then
+    # Function sets KNOWN_SITES_ARGS variable with all --known-sites flags
+    echo "BQSR will use: ${KNOWN_SITES_ARGS}"
+else
+    # No known sites found
+    KNOWN_SITES_ARGS=""
+    echo "BQSR will be skipped (no known sites found)"
 fi
 
 mkdir -p "${SC_OUTPUT_DIR}" "${QC_METRICS_DIR}"
@@ -126,7 +145,7 @@ rm "${RAW_BAM}" "${RAW_BAM}.bai"
 # Step 3: BQSR (if known sites available)
 ##########################################################################################################################
 
-if [ -n "${KNOWN_SITES}" ]; then
+if [ -n "${KNOWN_SITES_ARGS}" ]; then
     echo "Step 3: Running BQSR..."
 
     module load GATK
@@ -136,7 +155,7 @@ if [ -n "${KNOWN_SITES}" ]; then
     gatk BaseRecalibrator \
         -R "${REFERENCE}" \
         -I "${MARKDUP_BAM}" \
-        ${KNOWN_SITES} \
+        ${KNOWN_SITES_ARGS} \
         -O "${RECAL_TABLE}"
 
     gatk ApplyBQSR \
@@ -156,7 +175,7 @@ if [ -n "${KNOWN_SITES}" ]; then
 
     echo "✓ BQSR complete"
 else
-    echo "Step 3: Skipping BQSR (no known sites)"
+    echo "Step 3: Skipping BQSR (no known sites available)"
 
     mv "${MARKDUP_BAM}" "${PREPROCESSED_BAM}"
 

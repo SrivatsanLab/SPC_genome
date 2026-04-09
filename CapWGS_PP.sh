@@ -85,6 +85,10 @@ Optional arguments:
                                   bcftools: Faster, suitable for shallow pilot runs
                                   gatk: More rigorous, follows GATK best practices (includes mark duplicates and BQSR)
                                   none: Skip variant calling, run QC only
+  -k    <known_sites_dir>       Path to directory containing known sites VCF files for BQSR (optional)
+                                  Looks for dbSNP, known_indels, and Mills_indels in bundle/ subdirectory
+                                  If not provided, will check reference_genome/bundle/ directory
+                                  If no files found, BQSR will be skipped
   --use-existing-chunks         Skip fastq splitting, use existing chunks in temp directory
                                   Requires chunk_indices.txt to exist in results directory
                                   Useful for development/testing and retry scenarios
@@ -111,7 +115,7 @@ for arg in "$@"; do
 done
 
 # Parse command-line options (these override config.yaml values)
-while getopts ":o:1:2:g:r:s:n:t:c:v:h" option; do
+while getopts ":o:1:2:g:r:s:n:t:c:v:k:h" option; do
   case $option in
     o) OUTPUT_NAME=$OPTARG ;;
     1) READ1=$OPTARG ;;
@@ -123,6 +127,7 @@ while getopts ":o:1:2:g:r:s:n:t:c:v:h" option; do
 	t) TMP_DIR_BASE=$OPTARG ;;
 	c) CELL_COUNT=$OPTARG ;;
 	v) VARIANT_CALLER=$OPTARG ;;
+	k) KNOWN_SITES_DIR=$OPTARG ;;
     h) show_help; exit 0 ;;
     \?) echo "Invalid option: -$OPTARG" >&2; show_help; exit 1 ;;
     :) echo "Option -$OPTARG requires an argument." >&2; show_help; exit 1 ;;
@@ -136,8 +141,9 @@ if [ -z "$OUTPUT_NAME" ] || [ -z "$READ1" ] || [ -z "$READ2" ] || [ -z "$READ_CO
     exit 1
 fi
 
-# Set default for CELL_COUNT if not provided
+# Set default for CELL_COUNT and KNOWN_SITES_DIR if not provided
 CELL_COUNT="${CELL_COUNT:-}"
+KNOWN_SITES_DIR="${KNOWN_SITES_DIR:-}"
 
 # Validate variant caller option (convert to lowercase for comparison)
 VARIANT_CALLER_LOWER=$(echo "$VARIANT_CALLER" | tr '[:upper:]' '[:lower:]')
@@ -175,6 +181,7 @@ echo "Read 2: ${READ2}"
 echo "Read Count: ${READ_COUNT}"
 echo "Reference Genome: ${REFERENCE_GENOME}"
 echo "Variant Caller: ${VARIANT_CALLER}"
+echo "Known Sites Directory: ${KNOWN_SITES_DIR:-auto-detect from reference directory}"
 echo ""
 echo "Scripts Directory: ${SCRIPTS_DIR}"
 echo "Data Directory: ${DATA_DIR}"
@@ -441,7 +448,8 @@ sc_unified_job_ID=$(sbatch --parsable \
     "${QC_METRICS_DIR}" \
     "${REFERENCE_GENOME}" \
     "${SCRIPTS_DIR}" \
-    1000)
+    1000 \
+    "${KNOWN_SITES_DIR}")
 
 echo "Single-cell unified processing job ID: ${sc_unified_job_ID}"
 echo "Array size: 1-${DETECTED_CELL_COUNT}"
