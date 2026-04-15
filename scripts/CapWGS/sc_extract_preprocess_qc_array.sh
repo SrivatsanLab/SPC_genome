@@ -139,7 +139,7 @@ java -Xmx12g -jar $EBROOTPICARD/picard.jar MarkDuplicates \
 echo "✓ MarkDuplicates complete"
 
 # Clean up raw BAM
-rm "${RAW_BAM}" "${RAW_BAM}.bai"
+# rm "${RAW_BAM}" "${RAW_BAM}.bai"
 
 ##########################################################################################################################
 # Step 3: BQSR (if known sites available)
