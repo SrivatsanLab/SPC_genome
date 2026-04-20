@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --output=SLURM_outs/%x_%j.out
-#SBATCH -c 2
-#SBATCH -t 12-00:00:00
+#SBATCH -c 36 
+#SBATCH -t 8-00:00:00
 
 mkdir -p SLURM_outs/
 
