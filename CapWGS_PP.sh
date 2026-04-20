@@ -334,23 +334,23 @@ echo "  Merging ${N_INTERMEDIATE} intermediate BAMs into final sorted BAM..."
 # Final merge and sort (unfiltered first for accurate flagstat)
 # -c: Combine @RG headers with colliding IDs (preserve read groups)
 UNFILTERED_BAM="${BAM_FILE%.bam}.unfiltered.bam"
-samtools merge -@ 4 -c -b "${RESULTS_DIR}/intermediate_bam_list.txt" -O BAM - | \
-    samtools sort -@ 4 -o "${UNFILTERED_BAM}"
+samtools merge -@ 36 -c -b "${RESULTS_DIR}/intermediate_bam_list.txt" -O BAM - | \
+    samtools sort -@ 36 -o "${UNFILTERED_BAM}"
 
 echo "  ✓ Unfiltered BAM created: ${UNFILTERED_BAM}"
 
 # Run flagstat on unfiltered BAM to get true mapping rate
 echo "Running samtools flagstat (unfiltered)..."
 FLAGSTAT_FILE="${RESULTS_DIR}/flagstat.txt"
-samtools flagstat -@ 4 "${UNFILTERED_BAM}" > "${FLAGSTAT_FILE}"
+samtools flagstat -@ 36 "${UNFILTERED_BAM}" > "${FLAGSTAT_FILE}"
 echo "Flagstat written to: ${FLAGSTAT_FILE}"
 cat "${FLAGSTAT_FILE}"
 echo ""
 
 # Filter for properly paired reads and create final BAM
 echo "Filtering for properly paired reads..."
-samtools view -@ 4 -f 0x2 -b "${UNFILTERED_BAM}" | \
-    samtools sort -@ 4 -o "${BAM_FILE}"
+samtools view -@ 36 -f 0x2 -b "${UNFILTERED_BAM}" | \
+    samtools sort -@ 36 -o "${BAM_FILE}"
 rm "${UNFILTERED_BAM}"
 
 echo "  ✓ Final BAM created: ${BAM_FILE}"
@@ -361,11 +361,11 @@ echo "=========================================="
 echo ""
 
 echo "Indexing BAM file..."
-samtools index -@ 4 "${BAM_FILE}"
+samtools index -@ 36 "${BAM_FILE}"
 echo ""
 
 echo "Computing read counts per barcode..."
-samtools view -@ 4 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${RESULTS_DIR}/readcounts.csv"
+samtools view -@ 36 "${BAM_FILE}" | python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" -o "${RESULTS_DIR}/readcounts.csv"
 
 # Calculate barcode assignment statistics
 echo ""
