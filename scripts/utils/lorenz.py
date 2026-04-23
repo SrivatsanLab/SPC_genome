@@ -53,8 +53,10 @@ def compute_lorenz_curve(coverage, n_points=100):
 
     prop = coverage / total_coverage
 
-    # Filter out zeros and sort
-    prop = prop[prop > 0]
+    # Filter out zeros (uncomment)
+#    prop = prop[prop > 0]
+
+    # Sort
     prop_sorted = np.sort(prop)
 
     # Compute cumulative sum
