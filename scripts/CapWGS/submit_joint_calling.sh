@@ -39,24 +39,65 @@ mkdir -p "${RESULTS_DIR}"
 
 if [ "$VARIANT_CALLER" = "bcftools" ]; then
     ##################################################################################################################
-    # BCFtools mode: Merge and normalize VCFs
+    # BCFtools mode: Interval-scattered merge + norm + filter, then concat
     ##################################################################################################################
 
-    echo "BCFtools mode: Merging and normalizing VCFs..."
+    echo "BCFtools mode: Running parallelized joint calling with balanced intervals..."
     echo ""
 
-    OUTPUT_VCF="${RESULTS_DIR}/${OUTPUT_NAME}_joint.vcf.gz"
+    INTERVAL_LIST="${TMP_DIR}/interval_list.txt"
+    PER_INTERVAL_DIR="${TMP_DIR}/per_interval_vcfs"
+    FINAL_VCF="${RESULTS_DIR}/${OUTPUT_NAME}_joint.vcf.gz"
+    SCATTER_COUNT=100
 
-    # Submit BCFtools merge and normalize job
-    bcf_jc_ID=$(sbatch --parsable \
-        "${SCRIPTS_DIR}/scripts/CapWGS/bcftools_joint_calling.sh" \
+    mkdir -p "${PER_INTERVAL_DIR}"
+
+    ##############################################################################################################
+    # Step 1: Generate balanced genomic intervals
+    ##############################################################################################################
+
+    echo "Step 1: Generating ${SCATTER_COUNT} balanced genomic intervals..."
+
+    interval_gen_job_ID=$(sbatch --parsable \
+        "${SCRIPTS_DIR}/scripts/CapWGS/generate_intervals.sh" \
+        "${REFERENCE_GENOME}" \
+        "${TMP_DIR}" \
+        "${SCATTER_COUNT}")
+
+    echo "Interval generation job submitted: ${interval_gen_job_ID}"
+    echo ""
+
+    ##############################################################################################################
+    # Step 2: After intervals are generated, dispatch the per-interval array + concat-merge
+    # (Sized dynamically to the actual interval count, since SplitIntervals with
+    #  BALANCING_WITHOUT_INTERVAL_SUBDIVISION may produce fewer bins than requested.)
+    ##############################################################################################################
+
+    echo "Step 2: Submitting dispatch job (sizes array + merge after intervals exist)..."
+
+    dispatch_job_ID=$(sbatch --parsable \
+        --dependency=afterok:${interval_gen_job_ID} \
+        "${SCRIPTS_DIR}/scripts/CapWGS/bcftools_joint_calling_parallel_dispatch.sh" \
+        "${SCRIPTS_DIR}" \
         "${ALIGNED_DIR}" \
         "${REFERENCE_GENOME}" \
-        "${OUTPUT_VCF}" \
-        "${OUTPUT_NAME}")
+        "${PER_INTERVAL_DIR}" \
+        "${INTERVAL_LIST}" \
+        "${FINAL_VCF}")
 
-    echo "BCFtools joint calling job submitted: ${bcf_jc_ID}"
-    echo "Output VCF will be: ${OUTPUT_VCF}"
+    echo "Dispatch job submitted: ${dispatch_job_ID}"
+    echo ""
+
+    echo "BCFtools joint calling pipeline submitted!"
+    echo ""
+    echo "Job chain:"
+    echo "  1. Generate intervals: ${interval_gen_job_ID}"
+    echo "  2. Dispatch + array + concat: ${dispatch_job_ID} (children submitted after intervals exist)"
+    echo ""
+    echo "Output files:"
+    echo "  Intervals: ${TMP_DIR}/intervals/"
+    echo "  Per-interval VCFs (temp): ${PER_INTERVAL_DIR}/"
+    echo "  Final merged VCF: ${FINAL_VCF}"
     echo ""
 
 elif [ "$VARIANT_CALLER" = "gatk" ]; then
