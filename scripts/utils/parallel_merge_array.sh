@@ -13,10 +13,13 @@
 #   $1: GROUP_DIR - Directory containing group_XX files (lists of SAM files)
 #   $2: INTERMEDIATE_DIR - Output directory for intermediate BAMs
 #   $3: SAMPLE_NAME - Sample name for output file naming
+#   $4: FILTER_PP - "true" (default) to filter -f 0x2 properly paired; "false" to skip
+#                   (use "false" for single-end or unmapped streams)
 
 GROUP_DIR="$1"
 INTERMEDIATE_DIR="$2"
 SAMPLE_NAME="$3"
+FILTER_PP="${4:-true}"
 
 # Get group file for this array task
 # Note: split creates files starting from 00, but SLURM arrays start from 1
@@ -48,12 +51,18 @@ echo "Merging ${SAM_COUNT} SAM files..."
 
 # Merge SAM files for this group
 # -c: Combine @RG headers with colliding IDs (preserve read groups)
-# -f 0x2: Filter for properly paired reads (removes duplicates from chunking)
 # -O BAM: Output as BAM format
 # -b: Input file list
-samtools merge -@ 4 -c -b "${GROUP_FILE}" -O SAM - | \
-    samtools view -@ 4 -f 0x2 -b - | \
-    samtools sort -@ 4 -o "${INTERMEDIATE_BAM}"
+# FILTER_PP=true applies -f 0x2 (properly paired); set false for SE / unmapped streams.
+if [ "${FILTER_PP}" = "true" ]; then
+    samtools merge -@ 4 -c -b "${GROUP_FILE}" -O SAM - | \
+        samtools view -@ 4 -f 0x2 -b - | \
+        samtools sort -@ 4 -o "${INTERMEDIATE_BAM}"
+else
+    echo "Skipping properly-paired filter (FILTER_PP=false)"
+    samtools merge -@ 4 -c -b "${GROUP_FILE}" -O BAM - | \
+        samtools sort -@ 4 -o "${INTERMEDIATE_BAM}"
+fi
 
 if [ $? -eq 0 ]; then
     echo ""
