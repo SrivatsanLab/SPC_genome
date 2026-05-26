@@ -23,6 +23,7 @@ scripts_DIR="$3"
 TMP_DIR="$4"
 SAMPLE_NAME="$5"
 RESULTS_DIR="$6"
+DEBUG="${7:-false}"
 
 barcodes="${scripts_DIR}/barcodes"
 demux_scr="${scripts_DIR}/scripts/utils/atrandi_demux.py"
@@ -31,6 +32,9 @@ chunk=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$chunk_indices")
 
 READ1="${TMP_DIR}/read1_chunk_${chunk}"
 READ2="${TMP_DIR}/read2_chunk_${chunk}"
+
+# In debug mode, keep intermediates instead of deleting them.
+debug_rm() { [ "$DEBUG" = "true" ] && return 0; rm "$@"; }
 
 # Create preprocessing stats directory
 STATS_DIR="${RESULTS_DIR}/preprocessing_stats"
@@ -47,7 +51,7 @@ python $demux_scr $READ1 $READ2 $barcodes \
   2>&1 | tee "${TMP_DIR}/demux_stats_chunk_${chunk}.txt"
 
 #delete uncorrected fastqs
-rm $READ1 $READ2
+debug_rm $READ1 $READ2
 
 ##########################################################################################################################
 # Trimming
@@ -65,7 +69,7 @@ trim_galore --paired --cores 4 -o "${TMP_DIR}" --illumina --gzip "${READ1}" "${R
 module unload cutadapt/4.1-GCCcore-11.2.0 Trim_Galore/0.6.7-GCCcore-11.2.0
 
 # Delete untrimmed fastqs
-rm $READ1 $READ2
+debug_rm $READ1 $READ2
 
 ##########################################################################################################################
 # Alignment
@@ -187,7 +191,7 @@ bwa mem -t 4 -c 1 -C -R "${RG}" -o "${SAM_FILE}" "${BWA_INDEX}" "${READ1}" "${RE
   2> >(tee "${TMP_DIR}/bwa_stats_chunk_${chunk}.txt" >&2)
 
 # Delete fastq's
-rm "${READ1}" "${READ2}"
+debug_rm "${READ1}" "${READ2}"
 
 ##########################################################################################################################
 # Save preprocessing stats as structured JSON
@@ -203,6 +207,8 @@ python3 "${scripts_DIR}/scripts/CapWGS/save_chunk_stats.py" \
   --output "${STATS_DIR}/chunk_${chunk}.json" || echo "Warning: Failed to save chunk stats (non-fatal)"
 
 # Clean up stats temp files
-rm -f "${TMP_DIR}/demux_stats_chunk_${chunk}.txt" \
-      "${TMP_DIR}/trimming_stats_chunk_${chunk}.txt" \
-      "${TMP_DIR}/bwa_stats_chunk_${chunk}.txt"
+if [ "$DEBUG" != "true" ]; then
+    rm -f "${TMP_DIR}/demux_stats_chunk_${chunk}.txt" \
+          "${TMP_DIR}/trimming_stats_chunk_${chunk}.txt" \
+          "${TMP_DIR}/bwa_stats_chunk_${chunk}.txt"
+fi
