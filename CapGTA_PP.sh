@@ -87,6 +87,17 @@ Optional arguments:
   --use-existing-chunks         Skip fastq splitting, use existing chunks in temp directory
                                 Requires chunk_indices.txt to exist in results directory
                                 Useful for development/testing and retry scenarios
+  --single-end                  Single-end mode: align only R1 with STAR. Use when R2 carries
+                                only the barcode (e.g. 50bp R2 = barcode + overhangs) and has
+                                no genomic content. Demux still runs on the R1+R2 pair (the
+                                barcode lives on R2), but R2 is dropped before alignment.
+                                Skips the properly-paired filter on the merged BAMs.
+  --debug                       Debug mode:
+                                  - Capture unmapped reads with CB tags into a separate BAM
+                                  - Write per-barcode unmapped read counts CSV + knee plot
+                                  - Skip cleanup of intermediate files (raw/demuxed/trimmed
+                                    chunks, per-chunk SAMs, unfiltered BAMs, STAR scratch)
+                                Disk cost is significantly higher; prefer single-sample runs.
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -102,13 +113,23 @@ EOF
 
 # Initialize flag for using existing chunks
 USE_EXISTING_CHUNKS=false
+DEBUG=false
+SINGLE_END=false
 
-# Parse long options manually before getopts
+# Parse long options manually and strip them from $@ before getopts (getopts only knows short opts)
+_remaining_args=()
 for arg in "$@"; do
-    if [ "$arg" = "--use-existing-chunks" ]; then
-        USE_EXISTING_CHUNKS=true
-    fi
+    case "$arg" in
+        --use-existing-chunks) USE_EXISTING_CHUNKS=true ;;
+        --debug) DEBUG=true ;;
+        --single-end) SINGLE_END=true ;;
+        *) _remaining_args+=("$arg") ;;
+    esac
 done
+set -- "${_remaining_args[@]}"
+
+# In debug mode, keep intermediates (chunks, unfiltered BAMs, STAR scratch) so we can inspect them.
+debug_rm() { [ "$DEBUG" = "true" ] && return 0; rm "$@"; }
 
 # Parse command-line options (these override config.yaml values)
 while getopts ":o:1:2:g:a:r:s:n:t:c:h" option; do
@@ -174,6 +195,13 @@ echo "QC Metrics Directory: ${QC_METRICS_DIR}"
 echo "Results Directory: ${RESULTS_DIR}"
 echo "Temp Directory: ${TMP_DIR}"
 echo "Number of Chunks: ${N_CHUNKS}"
+echo "Debug Mode: ${DEBUG}"
+echo "Single-End Mode: ${SINGLE_END}"
+if [ "$DEBUG" = "true" ]; then
+    echo ""
+    echo "WARNING: debug mode keeps all intermediates (chunks, per-chunk SAMs, unfiltered BAMs)."
+    echo "         Expect 5-10x normal TMP_DIR footprint per sample. Prefer single-sample runs."
+fi
 echo "=========================================="
 
 ######################################################################################################
@@ -230,7 +258,14 @@ fi
 ######################################################################################################
 #### Submit STAR-only alignment array job and wait for completion
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}")
+if [ "$SINGLE_END" = "true" ]; then
+    PP_ARRAY_SCRIPT="${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only_SE.sh"
+    echo "Submitting single-end alignment array (R1 only)..."
+else
+    PP_ARRAY_SCRIPT="${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh"
+fi
+
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_ARRAY_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${DEBUG}")
 
 echo "STAR-only alignment preprocessing array job ID: ${PP_array_ID}"
 
@@ -240,7 +275,7 @@ wait_for_job "${PP_array_ID}"
 echo "Alignment array complete!"
 
 ######################################################################################################
-#### Two-stage parallel SAM merge (DNA and RNA separately, runs inline)
+#### Two-stage parallel SAM merge (DNA, RNA, and optionally unmapped — runs inline)
 
 echo "=========================================="
 echo "Concatenating SAM files and creating BAMs..."
@@ -255,154 +290,126 @@ sleep 5
 
 module load SAMtools
 
-echo "=========================================="
-echo "Two-Stage Parallel SAM Merge (DNA)"
-echo "=========================================="
+MERGE_GROUP_SIZE=20  # Number of SAMs per parallel-merge group
 
-# Stage 1: Create groups of DNA SAM files for parallel merging
-MERGE_GROUP_SIZE=20  # Number of SAMs per group (configurable)
-GROUP_DIR_DNA="${TMP_DIR}/merge_groups_dna"
-INTERMEDIATE_DIR_DNA="${TMP_DIR}/intermediate_bams_dna"
+# Stage 1+2: group SAMs and submit the parallel merge array.
+# Diagnostic output goes to stderr so stdout cleanly returns the SLURM job ID.
+submit_parallel_merge() {
+    local stream="$1"        # dna | rna | unmapped
+    local sam_glob="$2"      # e.g. *_dna.sam
 
-echo "Stage 1: Preparing parallel merge groups (DNA)..."
-mkdir -p "${GROUP_DIR_DNA}"
-mkdir -p "${INTERMEDIATE_DIR_DNA}"
+    local group_dir="${TMP_DIR}/merge_groups_${stream}"
+    local intermediate_dir="${TMP_DIR}/intermediate_bams_${stream}"
+    local sam_list="${RESULTS_DIR}/sam_list_${stream}.txt"
 
-ls "${TMP_DIR}"/*_dna.sam > "${RESULTS_DIR}/sam_list_dna.txt"
+    {
+        echo "=========================================="
+        echo "Two-Stage Parallel SAM Merge (${stream})"
+        echo "=========================================="
+        mkdir -p "${group_dir}" "${intermediate_dir}"
+        ls "${TMP_DIR}"/${sam_glob} > "${sam_list}"
+        split -l ${MERGE_GROUP_SIZE} -d -a 2 "${sam_list}" "${group_dir}/group_"
+        local n_groups
+        n_groups=$(ls ${group_dir}/group_* 2>/dev/null | wc -l)
+        echo "  Created ${n_groups} merge groups of ~${MERGE_GROUP_SIZE} SAMs each (${stream})"
+    } >&2
 
-# Split sam_list.txt into groups
-split -l ${MERGE_GROUP_SIZE} -d -a 2 "${RESULTS_DIR}/sam_list_dna.txt" "${GROUP_DIR_DNA}/group_"
+    local n_groups
+    n_groups=$(ls ${group_dir}/group_* 2>/dev/null | wc -l)
+    # SE alignments aren't paired, so the stage-1 properly-paired filter would drop everything.
+    local filter_pp_stage1="true"
+    if [ "$SINGLE_END" = "true" ]; then
+        filter_pp_stage1="false"
+    fi
+    sbatch --parsable --array=1-${n_groups} \
+        "${SCRIPTS_DIR}/scripts/utils/parallel_merge_array.sh" \
+        "${group_dir}" \
+        "${intermediate_dir}" \
+        "${SAMPLE_NAME}_${stream}" \
+        "${filter_pp_stage1}"
+}
 
-# Count groups created
-N_GROUPS_DNA=$(ls ${GROUP_DIR_DNA}/group_* 2>/dev/null | wc -l)
-echo "  Created ${N_GROUPS_DNA} merge groups of ~${MERGE_GROUP_SIZE} SAMs each"
-echo ""
+# Stage 3: final merge of intermediate BAMs into the per-stream output BAM.
+# Mapped streams (DNA, RNA) get filtered to properly-paired; unmapped is kept as-is.
+finalize_stream_bam() {
+    local stream="$1"
+    local out_bam="$2"
+    local filter_pp="$3"   # true | false
 
-# Stage 2: Submit parallel merge array for DNA
-echo "Stage 2: Submitting parallel merge array for DNA (${N_GROUPS_DNA} jobs)..."
-parallel_merge_job_dna=$(sbatch --parsable --array=1-${N_GROUPS_DNA} \
-    "${SCRIPTS_DIR}/scripts/utils/parallel_merge_array.sh" \
-    "${GROUP_DIR_DNA}" \
-    "${INTERMEDIATE_DIR_DNA}" \
-    "${SAMPLE_NAME}_dna")
+    local intermediate_dir="${TMP_DIR}/intermediate_bams_${stream}"
+    local list="${RESULTS_DIR}/intermediate_bam_list_${stream}.txt"
+    ls "${intermediate_dir}"/*.bam > "${list}"
+    local n
+    n=$(wc -l < "${list}")
+    echo "Stage 3: merging ${n} intermediate BAMs (${stream})..."
 
+    local unfiltered="${out_bam%.bam}.unfiltered.bam"
+    samtools merge -@ 4 -c -b "${list}" -O BAM - | \
+        samtools sort -@ 4 -o "${unfiltered}"
+    echo "  ✓ Unfiltered ${stream} BAM: ${unfiltered}"
+
+    samtools flagstat -@ 4 "${unfiltered}" > "${RESULTS_DIR}/flagstat_${stream}.txt"
+    echo "  ${stream} flagstat: ${RESULTS_DIR}/flagstat_${stream}.txt"
+
+    if [ "$filter_pp" = "true" ]; then
+        samtools view -@ 4 -f 0x2 -b "${unfiltered}" | \
+            samtools sort -@ 4 -o "${out_bam}"
+        debug_rm "${unfiltered}"
+    else
+        # Unmapped stream: skip properly-paired filter (no mapped reads to pair with).
+        mv "${unfiltered}" "${out_bam}"
+    fi
+    echo "  ✓ Final ${stream} BAM: ${out_bam}"
+}
+
+# Submit DNA + RNA stage-1+2 in parallel; unmapped only in debug mode.
+parallel_merge_job_dna=$(submit_parallel_merge "dna" "*_dna.sam")
 echo "  Parallel merge job ID (DNA): ${parallel_merge_job_dna}"
-
-echo "=========================================="
-echo "Two-Stage Parallel SAM Merge (RNA)"
-echo "=========================================="
-
-# Stage 1: Create groups of RNA SAM files for parallel merging
-GROUP_DIR_RNA="${TMP_DIR}/merge_groups_rna"
-INTERMEDIATE_DIR_RNA="${TMP_DIR}/intermediate_bams_rna"
-
-echo "Stage 1: Preparing parallel merge groups (RNA)..."
-mkdir -p "${GROUP_DIR_RNA}"
-mkdir -p "${INTERMEDIATE_DIR_RNA}"
-
-ls "${TMP_DIR}"/*_rna.sam > "${RESULTS_DIR}/sam_list_rna.txt"
-
-# Split sam_list.txt into groups
-split -l ${MERGE_GROUP_SIZE} -d -a 2 "${RESULTS_DIR}/sam_list_rna.txt" "${GROUP_DIR_RNA}/group_"
-
-# Count groups created
-N_GROUPS_RNA=$(ls ${GROUP_DIR_RNA}/group_* 2>/dev/null | wc -l)
-echo "  Created ${N_GROUPS_RNA} merge groups of ~${MERGE_GROUP_SIZE} SAMs each"
-echo ""
-
-# Stage 2: Submit parallel merge array for RNA
-echo "Stage 2: Submitting parallel merge array for RNA (${N_GROUPS_RNA} jobs)..."
-parallel_merge_job_rna=$(sbatch --parsable --array=1-${N_GROUPS_RNA} \
-    "${SCRIPTS_DIR}/scripts/utils/parallel_merge_array.sh" \
-    "${GROUP_DIR_RNA}" \
-    "${INTERMEDIATE_DIR_RNA}" \
-    "${SAMPLE_NAME}_rna")
-
+parallel_merge_job_rna=$(submit_parallel_merge "rna" "*_rna.sam")
 echo "  Parallel merge job ID (RNA): ${parallel_merge_job_rna}"
+if [ "$DEBUG" = "true" ]; then
+    parallel_merge_job_unmapped=$(submit_parallel_merge "unmapped" "*_unmapped.sam")
+    echo "  Parallel merge job ID (UNMAPPED): ${parallel_merge_job_unmapped}"
+fi
 echo ""
 
-# Wait for both DNA and RNA parallel merge arrays to complete
-echo "Waiting for DNA and RNA parallel merge arrays to complete..."
+echo "Waiting for parallel merge arrays to complete..."
 wait_for_job "${parallel_merge_job_dna}"
 echo "  ✓ DNA parallel merge complete!"
 wait_for_job "${parallel_merge_job_rna}"
 echo "  ✓ RNA parallel merge complete!"
+if [ "$DEBUG" = "true" ]; then
+    wait_for_job "${parallel_merge_job_unmapped}"
+    echo "  ✓ UNMAPPED parallel merge complete!"
+fi
 echo ""
 
-# Stage 3: Final merge and sort for DNA
-echo "Stage 3: Final merge and sort (DNA)..."
-ls "${INTERMEDIATE_DIR_DNA}"/*.bam > "${RESULTS_DIR}/intermediate_bam_list_dna.txt"
-
-N_INTERMEDIATE_DNA=$(wc -l < "${RESULTS_DIR}/intermediate_bam_list_dna.txt")
-echo "  Merging ${N_INTERMEDIATE_DNA} intermediate BAMs into final sorted DNA BAM..."
-
-# Final merge and sort (unfiltered first for accurate flagstat)
-# -c: Combine @RG headers with colliding IDs (preserve read groups)
 DNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_dna.bam"
-UNFILTERED_DNA_BAM="${DNA_BAM%.bam}.unfiltered.bam"
-
-samtools merge -@ 4 -c -b "${RESULTS_DIR}/intermediate_bam_list_dna.txt" -O BAM - | \
-    samtools sort -@ 4 -o "${UNFILTERED_DNA_BAM}"
-
-echo "  ✓ Unfiltered DNA BAM created: ${UNFILTERED_DNA_BAM}"
-
-# Run flagstat on unfiltered DNA BAM to get true mapping rate
-echo "Running samtools flagstat (DNA, unfiltered)..."
-FLAGSTAT_DNA="${RESULTS_DIR}/flagstat_dna.txt"
-samtools flagstat -@ 4 "${UNFILTERED_DNA_BAM}" > "${FLAGSTAT_DNA}"
-echo "DNA flagstat written to: ${FLAGSTAT_DNA}"
-echo ""
-
-# Filter for properly paired reads and create final DNA BAM
-echo "Filtering for properly paired reads (DNA)..."
-samtools view -@ 4 -f 0x2 -b "${UNFILTERED_DNA_BAM}" | \
-    samtools sort -@ 4 -o "${DNA_BAM}"
-rm "${UNFILTERED_DNA_BAM}"
-
-echo "  ✓ Final DNA BAM created: ${DNA_BAM}"
-echo ""
-
-# Stage 3: Final merge and sort for RNA
-echo "Stage 3: Final merge and sort (RNA)..."
-ls "${INTERMEDIATE_DIR_RNA}"/*.bam > "${RESULTS_DIR}/intermediate_bam_list_rna.txt"
-
-N_INTERMEDIATE_RNA=$(wc -l < "${RESULTS_DIR}/intermediate_bam_list_rna.txt")
-echo "  Merging ${N_INTERMEDIATE_RNA} intermediate BAMs into final sorted RNA BAM..."
-
-# Final merge and sort (unfiltered first for accurate flagstat)
 RNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_rna.bam"
-UNFILTERED_RNA_BAM="${RNA_BAM%.bam}.unfiltered.bam"
-
-samtools merge -@ 4 -c -b "${RESULTS_DIR}/intermediate_bam_list_rna.txt" -O BAM - | \
-    samtools sort -@ 4 -o "${UNFILTERED_RNA_BAM}"
-
-echo "  ✓ Unfiltered RNA BAM created: ${UNFILTERED_RNA_BAM}"
-
-# Run flagstat on unfiltered RNA BAM to get true mapping rate
-echo "Running samtools flagstat (RNA, unfiltered)..."
-FLAGSTAT_RNA="${RESULTS_DIR}/flagstat_rna.txt"
-samtools flagstat -@ 4 "${UNFILTERED_RNA_BAM}" > "${FLAGSTAT_RNA}"
-echo "RNA flagstat written to: ${FLAGSTAT_RNA}"
-echo ""
-
-# Filter for properly paired reads and create final RNA BAM
-echo "Filtering for properly paired reads (RNA)..."
-samtools view -@ 4 -f 0x2 -b "${UNFILTERED_RNA_BAM}" | \
-    samtools sort -@ 4 -o "${RNA_BAM}"
-rm "${UNFILTERED_RNA_BAM}"
-
-echo "  ✓ Final RNA BAM created: ${RNA_BAM}"
-echo ""
+# In single-end mode, no reads are paired, so skip the -f 0x2 properly-paired filter.
+if [ "$SINGLE_END" = "true" ]; then
+    PP_FILTER="false"
+else
+    PP_FILTER="true"
+fi
+finalize_stream_bam "dna" "${DNA_BAM}" "${PP_FILTER}"
+finalize_stream_bam "rna" "${RNA_BAM}" "${PP_FILTER}"
+if [ "$DEBUG" = "true" ]; then
+    UNMAPPED_BAM="${DATA_DIR}/${SAMPLE_NAME}_unmapped.bam"
+    finalize_stream_bam "unmapped" "${UNMAPPED_BAM}" "false"
+fi
 
 echo "=========================================="
 echo "Two-Stage Merge Complete!"
 echo "=========================================="
 echo ""
 
-# Index both BAMs
 echo "Indexing BAM files..."
 samtools index -@ 4 "${DNA_BAM}"
 samtools index -@ 4 "${RNA_BAM}"
+if [ "$DEBUG" = "true" ]; then
+    samtools index -@ 4 "${UNMAPPED_BAM}"
+fi
 echo ""
 
 ######################################################################################################
@@ -434,10 +441,17 @@ ASSIGNMENT_STATS="${RESULTS_DIR}/barcode_assignment_stats.txt"
     echo ""
 
     if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
-        # Multiply READ_COUNT by 2 for paired-end reads
-        total_input_reads=$((READ_COUNT * 2))
+        # PE: R1 + R2 both land in BAM, so input reads = READ_COUNT * 2
+        # SE: only R1 lands in BAM, so input reads = READ_COUNT
+        if [ "$SINGLE_END" = "true" ]; then
+            total_input_reads=${READ_COUNT}
+            mode_label="single-end"
+        else
+            total_input_reads=$((READ_COUNT * 2))
+            mode_label="paired-end"
+        fi
         assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bams / $total_input_reads) * 100}")
-        echo "Total input reads (paired-end): ${total_input_reads}"
+        echo "Total input reads (${mode_label}): ${total_input_reads}"
         echo "Reads assigned to valid barcodes (DNA + RNA): ${total_reads_in_bams}"
         echo "  - DNA reads: ${total_dna_reads}"
         echo "  - RNA reads: ${total_rna_reads}"
@@ -456,6 +470,22 @@ ASSIGNMENT_STATS="${RESULTS_DIR}/barcode_assignment_stats.txt"
 cat "${ASSIGNMENT_STATS}"
 echo "Barcode assignment statistics written to: ${ASSIGNMENT_STATS}"
 echo ""
+
+# Debug mode: per-barcode unmapped readcounts and knee plot.
+if [ "$DEBUG" = "true" ]; then
+    echo "=========================================="
+    echo "Debug: per-barcode unmapped readcounts + knee plot"
+    echo "=========================================="
+    samtools view -@ 4 "${UNMAPPED_BAM}" | \
+        python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" \
+        -o "${RESULTS_DIR}/readcounts_unmapped.csv"
+    cat "${RESULTS_DIR}/readcounts_unmapped.csv" | \
+        python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" \
+        --plot "${RESULTS_DIR}/kneeplot_unmapped.png" > /dev/null || true
+    echo "  ✓ ${RESULTS_DIR}/readcounts_unmapped.csv"
+    echo "  ✓ ${RESULTS_DIR}/kneeplot_unmapped.png"
+    echo ""
+fi
 
 # Cell detection (using combined DNA+RNA read counts)
 if [ -n "${CELL_COUNT}" ]; then

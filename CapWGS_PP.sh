@@ -92,6 +92,12 @@ Optional arguments:
   --use-existing-chunks         Skip fastq splitting, use existing chunks in temp directory
                                   Requires chunk_indices.txt to exist in results directory
                                   Useful for development/testing and retry scenarios
+  --debug                       Debug mode:
+                                  - Extract unmapped reads with CB tags into a separate BAM
+                                  - Write per-barcode unmapped read counts CSV + knee plot
+                                  - Skip cleanup of intermediate files (raw/demuxed/trimmed
+                                    chunks, unfiltered BAM)
+                                  Disk cost is significantly higher; prefer single-sample runs.
   -h                            Show this help message and exit
 
 Directory structure created:
@@ -106,13 +112,21 @@ EOF
 
 # Initialize flag for using existing chunks
 USE_EXISTING_CHUNKS=false
+DEBUG=false
 
-# Parse long options manually before getopts
+# Parse long options manually and strip them from $@ before getopts (getopts only knows short opts)
+_remaining_args=()
 for arg in "$@"; do
-    if [ "$arg" = "--use-existing-chunks" ]; then
-        USE_EXISTING_CHUNKS=true
-    fi
+    case "$arg" in
+        --use-existing-chunks) USE_EXISTING_CHUNKS=true ;;
+        --debug) DEBUG=true ;;
+        *) _remaining_args+=("$arg") ;;
+    esac
 done
+set -- "${_remaining_args[@]}"
+
+# In debug mode, keep intermediates (unfiltered BAM, fastq chunks) so we can inspect them.
+debug_rm() { [ "$DEBUG" = "true" ] && return 0; rm "$@"; }
 
 # Parse command-line options (these override config.yaml values)
 while getopts ":o:1:2:g:r:s:n:t:c:v:k:h" option; do
@@ -189,6 +203,12 @@ echo "Single Cell Outputs: ${SC_OUTPUTS_DIR}"
 echo "Results Directory: ${RESULTS_DIR}"
 echo "Temp Directory: ${TMP_DIR}"
 echo "Number of Chunks: ${N_CHUNKS}"
+echo "Debug Mode: ${DEBUG}"
+if [ "$DEBUG" = "true" ]; then
+    echo ""
+    echo "WARNING: debug mode keeps all intermediates (chunks, unfiltered BAM)."
+    echo "         Expect 5-10x normal TMP_DIR footprint per sample. Prefer single-sample runs."
+fi
 echo "=========================================="
 
 ######################################################################################################
@@ -245,7 +265,7 @@ fi
 ######################################################################################################
 #### Submit preprocessing array and wait for completion
 
-PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}" "${RESULTS_DIR}")
+PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${SCRIPTS_DIR}/scripts/CapWGS/PP_array.sh" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${SAMPLE_NAME}" "${RESULTS_DIR}" "${DEBUG}")
 
 echo "Preprocessing array job ID: ${PP_array_ID}"
 
@@ -347,11 +367,32 @@ echo "Flagstat written to: ${FLAGSTAT_FILE}"
 cat "${FLAGSTAT_FILE}"
 echo ""
 
+# Debug mode: extract unmapped reads (with CB tags) into a separate BAM, build per-barcode
+# readcounts + knee plot. Done before properly-paired filter so we keep the full unfiltered BAM.
+if [ "$DEBUG" = "true" ]; then
+    echo "=========================================="
+    echo "Debug: extracting unmapped reads + per-barcode knee plot"
+    echo "=========================================="
+    UNMAPPED_BAM="${DATA_DIR}/${SAMPLE_NAME}_unmapped.bam"
+    samtools view -@ 36 -f 4 -b "${UNFILTERED_BAM}" > "${UNMAPPED_BAM}"
+    samtools index -@ 36 "${UNMAPPED_BAM}"
+    samtools view -@ 36 "${UNMAPPED_BAM}" | \
+        python "${SCRIPTS_DIR}/scripts/utils/readcounts.py" \
+        -o "${RESULTS_DIR}/readcounts_unmapped.csv"
+    cat "${RESULTS_DIR}/readcounts_unmapped.csv" | \
+        python "${SCRIPTS_DIR}/scripts/utils/detect_cells.py" \
+        --plot "${RESULTS_DIR}/kneeplot_unmapped.png" > /dev/null || true
+    echo "  ✓ ${UNMAPPED_BAM}"
+    echo "  ✓ ${RESULTS_DIR}/readcounts_unmapped.csv"
+    echo "  ✓ ${RESULTS_DIR}/kneeplot_unmapped.png"
+    echo ""
+fi
+
 # Filter for properly paired reads and create final BAM
 echo "Filtering for properly paired reads..."
 samtools view -@ 36 -f 0x2 -b "${UNFILTERED_BAM}" | \
     samtools sort -@ 36 -o "${BAM_FILE}"
-rm "${UNFILTERED_BAM}"
+debug_rm "${UNFILTERED_BAM}"
 
 echo "  ✓ Final BAM created: ${BAM_FILE}"
 echo ""
