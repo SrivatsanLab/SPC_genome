@@ -87,11 +87,6 @@ Optional arguments:
   --use-existing-chunks         Skip fastq splitting, use existing chunks in temp directory
                                 Requires chunk_indices.txt to exist in results directory
                                 Useful for development/testing and retry scenarios
-  --single-end                  Single-end mode: align only R1 with STAR. Use when R2 carries
-                                only the barcode (e.g. 50bp R2 = barcode + overhangs) and has
-                                no genomic content. Demux still runs on the R1+R2 pair (the
-                                barcode lives on R2), but R2 is dropped before alignment.
-                                Skips the properly-paired filter on the merged BAMs.
   --debug                       Debug mode:
                                   - Capture unmapped reads with CB tags into a separate BAM
                                   - Write per-barcode unmapped read counts CSV + knee plot
@@ -114,7 +109,6 @@ EOF
 # Initialize flag for using existing chunks
 USE_EXISTING_CHUNKS=false
 DEBUG=false
-SINGLE_END=false
 
 # Parse long options manually and strip them from $@ before getopts (getopts only knows short opts)
 _remaining_args=()
@@ -122,7 +116,6 @@ for arg in "$@"; do
     case "$arg" in
         --use-existing-chunks) USE_EXISTING_CHUNKS=true ;;
         --debug) DEBUG=true ;;
-        --single-end) SINGLE_END=true ;;
         *) _remaining_args+=("$arg") ;;
     esac
 done
@@ -196,7 +189,6 @@ echo "Results Directory: ${RESULTS_DIR}"
 echo "Temp Directory: ${TMP_DIR}"
 echo "Number of Chunks: ${N_CHUNKS}"
 echo "Debug Mode: ${DEBUG}"
-echo "Single-End Mode: ${SINGLE_END}"
 if [ "$DEBUG" = "true" ]; then
     echo ""
     echo "WARNING: debug mode keeps all intermediates (chunks, per-chunk SAMs, unfiltered BAMs)."
@@ -258,12 +250,7 @@ fi
 ######################################################################################################
 #### Submit STAR-only alignment array job and wait for completion
 
-if [ "$SINGLE_END" = "true" ]; then
-    PP_ARRAY_SCRIPT="${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only_SE.sh"
-    echo "Submitting single-end alignment array (R1 only)..."
-else
-    PP_ARRAY_SCRIPT="${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh"
-fi
+PP_ARRAY_SCRIPT="${SCRIPTS_DIR}/scripts/CapGTA/PP_array_gta_star_only.sh"
 
 PP_array_ID=$(sbatch --parsable --array=1-$chunk_count "${PP_ARRAY_SCRIPT}" "${RESULTS_DIR}/chunk_indices.txt" "${REFERENCE_GENOME}" "${SCRIPTS_DIR}" "${TMP_DIR}" "${DEBUG}")
 
@@ -316,17 +303,12 @@ submit_parallel_merge() {
 
     local n_groups
     n_groups=$(ls ${group_dir}/group_* 2>/dev/null | wc -l)
-    # SE alignments aren't paired, so the stage-1 properly-paired filter would drop everything.
-    local filter_pp_stage1="true"
-    if [ "$SINGLE_END" = "true" ]; then
-        filter_pp_stage1="false"
-    fi
     sbatch --parsable --array=1-${n_groups} \
         "${SCRIPTS_DIR}/scripts/utils/parallel_merge_array.sh" \
         "${group_dir}" \
         "${intermediate_dir}" \
         "${SAMPLE_NAME}_${stream}" \
-        "${filter_pp_stage1}"
+        "true"
 }
 
 # Stage 3: final merge of intermediate BAMs into the per-stream output BAM.
@@ -386,14 +368,8 @@ echo ""
 
 DNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_dna.bam"
 RNA_BAM="${DATA_DIR}/${SAMPLE_NAME}_rna.bam"
-# In single-end mode, no reads are paired, so skip the -f 0x2 properly-paired filter.
-if [ "$SINGLE_END" = "true" ]; then
-    PP_FILTER="false"
-else
-    PP_FILTER="true"
-fi
-finalize_stream_bam "dna" "${DNA_BAM}" "${PP_FILTER}"
-finalize_stream_bam "rna" "${RNA_BAM}" "${PP_FILTER}"
+finalize_stream_bam "dna" "${DNA_BAM}" "true"
+finalize_stream_bam "rna" "${RNA_BAM}" "true"
 if [ "$DEBUG" = "true" ]; then
     UNMAPPED_BAM="${DATA_DIR}/${SAMPLE_NAME}_unmapped.bam"
     finalize_stream_bam "unmapped" "${UNMAPPED_BAM}" "false"
@@ -441,17 +417,10 @@ ASSIGNMENT_STATS="${RESULTS_DIR}/barcode_assignment_stats.txt"
     echo ""
 
     if [ -n "${READ_COUNT}" ] && [ "${READ_COUNT}" -gt 0 ]; then
-        # PE: R1 + R2 both land in BAM, so input reads = READ_COUNT * 2
-        # SE: only R1 lands in BAM, so input reads = READ_COUNT
-        if [ "$SINGLE_END" = "true" ]; then
-            total_input_reads=${READ_COUNT}
-            mode_label="single-end"
-        else
-            total_input_reads=$((READ_COUNT * 2))
-            mode_label="paired-end"
-        fi
+        # R1 + R2 both land in BAM, so input reads = READ_COUNT * 2
+        total_input_reads=$((READ_COUNT * 2))
         assignment_rate=$(awk "BEGIN {printf \"%.2f\", ($total_reads_in_bams / $total_input_reads) * 100}")
-        echo "Total input reads (${mode_label}): ${total_input_reads}"
+        echo "Total input reads (paired-end): ${total_input_reads}"
         echo "Reads assigned to valid barcodes (DNA + RNA): ${total_reads_in_bams}"
         echo "  - DNA reads: ${total_dna_reads}"
         echo "  - RNA reads: ${total_rna_reads}"

@@ -10,7 +10,6 @@ Status of `CapGTA_PP.sh` and supporting scripts. Updated 2026-05-26.
 - `wait_for_job()` SLURM error handling (replaces `--dependency=afterok:`)
 - `--use-existing-chunks` flag (skip FASTQ split, reuse `chunk_indices.txt`)
 - `--debug` mode: capture unmapped reads with CB tags into a separate BAM, write per-barcode unmapped readcounts + knee plot, keep all intermediates
-- `--single-end` mode flag + properly-paired filter bypass
 - Two-stage parallel SAM merge, DNA and RNA streams submitted concurrently (`submit_parallel_merge` / `finalize_stream_bam`)
 - Unfiltered BAM + `flagstat_{dna,rna}.txt` before `-f 0x2` filtering
 - DNA+RNA combined barcode assignment statistics → `barcode_assignment_stats.txt`
@@ -50,9 +49,6 @@ results/{sample}/
 ---
 
 ## TODO
-
-### Bugs
-- **`--single-end` mode is broken**: `CapGTA_PP.sh:262` references `scripts/CapGTA/PP_array_gta_star_only_SE.sh` which does not exist. Submitting with `--single-end` will fail at the alignment array.
 
 ### Phase 1 validation (still pending)
 - Run on `worm_CapGTA_UDI_5` end-to-end
