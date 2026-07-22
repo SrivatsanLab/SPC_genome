@@ -1,141 +1,134 @@
 #!/bin/bash
 #SBATCH -J rna_counts
 #SBATCH -o SLURM_outs/%x_%j.out
+#SBATCH -p campus-new
 #SBATCH -c 16
 #SBATCH --mem=32G
 #SBATCH -t 4:00:00
 
 ###########################################################################################################################
-# Create RNA count matrix (genes x cells) from single-cell RNA BAMs
-# Uses featureCounts to count reads per gene per cell
+# RNA count matrix (genes x cells) from a list of per-cell BAMs.
+#
+# Runs featureCounts once with all BAMs as inputs (single job, multi-threaded) and reformats the
+# output into a clean `gene_id x barcode` CSV. General-purpose: the caller decides which BAMs go
+# in (e.g. spliced-only for coassay data — see filter_spliced_reads_array.sh).
+#
+# Usage:
+#   sbatch scripts/CapGTA/create_rna_count_matrix.sh <bam_list.txt> <annotation.gtf> <output_prefix>
+#
+# Writes:
+#   <output_prefix>_raw.txt         featureCounts raw output (with summary in *.summary)
+#   <output_prefix>_matrix.csv      gene_id x barcode counts
+#   <output_prefix>_summary.csv     per-cell total counts + genes detected
 ###########################################################################################################################
 
 set -euo pipefail
 
-SC_RNA_DIR="$1"       # Directory containing *_rna.bam files
-GTF="$2"              # GTF annotation file
-OUTPUT_PREFIX="$3"    # Output prefix (e.g., results/PolE_worm_pilot/rna_counts)
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <bam_list.txt> <annotation.gtf> <output_prefix>" >&2
+    exit 1
+fi
 
-mkdir -p "$(dirname ${OUTPUT_PREFIX})"
+BAM_LIST="$1"
+GTF="$2"
+OUTPUT_PREFIX="$3"
 
-echo "Creating RNA count matrix..."
-echo "SC RNA BAMs: ${SC_RNA_DIR}"
-echo "GTF: ${GTF}"
-echo "Output prefix: ${OUTPUT_PREFIX}"
-echo ""
+for f in "${BAM_LIST}" "${GTF}"; do
+    if [ ! -f "${f}" ]; then
+        echo "Error: required input not found: ${f}" >&2
+        exit 1
+    fi
+done
 
-# Load required modules
-module load Subread  # Contains featureCounts
+mkdir -p "$(dirname "${OUTPUT_PREFIX}")"
 
-# Get list of all RNA BAMs
-RNA_BAMS=(${SC_RNA_DIR}/*_rna.bam)
-NUM_CELLS=${#RNA_BAMS[@]}
+N_BAMS=$(wc -l < "${BAM_LIST}")
 
-echo "Found ${NUM_CELLS} RNA BAMs"
-echo ""
+echo "=========================================="
+echo "RNA count matrix"
+echo "=========================================="
+echo "BAM list:       ${BAM_LIST} (${N_BAMS} BAMs)"
+echo "GTF:            ${GTF}"
+echo "Output prefix:  ${OUTPUT_PREFIX}"
+echo "Started:        $(date -Iseconds)"
+echo "=========================================="
 
-# Run featureCounts on all RNA BAMs
-# -a: GTF file
-# -o: output file
-# -T: number of threads
-# -t: feature type (exon)
-# -g: group by gene_id
-# -M: count multi-mapping reads
-# --fracOverlap: minimum fraction of overlapping bases (0.5 = 50%)
-# --primary: only count primary alignments
-# -p: paired-end mode
-# -B: only count read pairs with both ends mapped
-# -C: do not count chimeric fragments
+module load Subread
 
-echo "Running featureCounts..."
+# Read BAM paths into an array for featureCounts invocation.
+mapfile -t BAM_PATHS < "${BAM_LIST}"
+
+# featureCounts args:
+#   -a GTF, -o output
+#   -T 16 threads
+#   -t exon, -g gene_id: count reads overlapping exons, aggregate by gene
+#   --fracOverlap 0.5:  require 50% of read length to overlap exon
+#   --primary:          only primary alignments
+#   -p:                 paired-end input (BAMs are PE from spc-align)
+#   -B:                 count only pairs where both ends mapped
+#   -C:                 exclude chimeric pairs (different chromosomes)
+# Note: no -M (multi-mapper), because STAR was run with --outFilterMultimapNmax 1 upstream.
 featureCounts \
     -a "${GTF}" \
     -o "${OUTPUT_PREFIX}_raw.txt" \
     -T 16 \
     -t exon \
     -g gene_id \
-    -M \
     --fracOverlap 0.5 \
     --primary \
     -p \
     -B \
     -C \
-    "${RNA_BAMS[@]}"
+    "${BAM_PATHS[@]}"
 
 echo ""
-echo "featureCounts complete! Raw output: ${OUTPUT_PREFIX}_raw.txt"
-echo ""
+echo "featureCounts complete — reformatting into matrix..."
 
-# Convert featureCounts output to clean matrix format
-# featureCounts output has 6 metadata columns, then one column per BAM
-# We'll extract just the gene IDs and counts, and clean up BAM file names
-
-echo "Converting to clean count matrix format..."
-
-python3 << PYTHON_SCRIPT
-import pandas as pd
+python3 - "${OUTPUT_PREFIX}_raw.txt" "${OUTPUT_PREFIX}" <<'PYTHON_SCRIPT'
 import os
+import sys
 
-# Read featureCounts output
-input_file = "${OUTPUT_PREFIX}_raw.txt"
-output_prefix = "${OUTPUT_PREFIX}"
+import pandas as pd
 
-# Read the count table (skip comment line starting with #)
-counts = pd.read_csv(input_file, sep='\t', comment='#')
+raw_path = sys.argv[1]
+out_prefix = sys.argv[2]
 
-# Extract gene IDs and count columns
-# First 6 columns are: Geneid, Chr, Start, End, Strand, Length
+counts = pd.read_csv(raw_path, sep='\t', comment='#')
+
+# featureCounts columns: Geneid, Chr, Start, End, Strand, Length, <bam_path>, <bam_path>, ...
 gene_ids = counts['Geneid']
-count_cols = counts.columns[6:]  # Skip first 6 metadata columns
+bam_cols = counts.columns[6:]
 
-# Extract cell barcodes from BAM filenames
-# Format: /path/to/BARCODE_rna.bam -> BARCODE
-cell_barcodes = []
-for col in count_cols:
-    # Extract filename from path
-    basename = os.path.basename(col)
-    # Remove _rna.bam suffix
-    barcode = basename.replace('_rna.bam', '')
-    cell_barcodes.append(barcode)
+# Barcode = BAM basename without the .bam suffix.
+barcodes = [os.path.basename(c).removesuffix('.bam') for c in bam_cols]
 
-# Create count matrix with clean names
-count_matrix = counts[count_cols].copy()
-count_matrix.columns = cell_barcodes
-count_matrix.insert(0, 'gene_id', gene_ids)
+matrix = counts[bam_cols].copy()
+matrix.columns = barcodes
+matrix.insert(0, 'gene_id', gene_ids)
 
-# Save as CSV
-output_csv = output_prefix + '_matrix.csv'
-count_matrix.to_csv(output_csv, index=False)
-print(f"Saved count matrix: {output_csv}")
-print(f"Dimensions: {len(gene_ids)} genes x {len(cell_barcodes)} cells")
+matrix_csv = f'{out_prefix}_matrix.csv'
+matrix.to_csv(matrix_csv, index=False)
+print(f'Wrote {matrix_csv}  ({len(gene_ids)} genes x {len(barcodes)} cells)')
 
-# Print summary statistics
-total_counts = count_matrix[cell_barcodes].sum(axis=0)
-genes_detected = (count_matrix[cell_barcodes] > 0).sum(axis=0)
+per_cell_totals = matrix[barcodes].sum(axis=0)
+per_cell_detected = (matrix[barcodes] > 0).sum(axis=0)
 
-print("\nPer-cell summary:")
-print(f"  Mean counts per cell: {total_counts.mean():.0f}")
-print(f"  Median counts per cell: {total_counts.median():.0f}")
-print(f"  Mean genes detected per cell: {genes_detected.mean():.0f}")
-print(f"  Median genes detected per cell: {genes_detected.median():.0f}")
-
-# Also create a summary file
 summary = pd.DataFrame({
-    'cell_barcode': cell_barcodes,
-    'total_rna_counts': total_counts.values,
-    'genes_detected': genes_detected.values
+    'barcode': barcodes,
+    'total_counts': per_cell_totals.values,
+    'genes_detected': per_cell_detected.values,
 })
-summary_file = output_prefix + '_summary.csv'
-summary.to_csv(summary_file, index=False)
-print(f"\nSaved per-cell summary: {summary_file}")
+summary_csv = f'{out_prefix}_summary.csv'
+summary.to_csv(summary_csv, index=False)
+print(f'Wrote {summary_csv}')
+
+print()
+print('Per-cell summary:')
+print(f'  Mean counts/cell:   {per_cell_totals.mean():.0f}')
+print(f'  Median counts/cell: {per_cell_totals.median():.0f}')
+print(f'  Mean genes/cell:    {per_cell_detected.mean():.0f}')
+print(f'  Median genes/cell:  {per_cell_detected.median():.0f}')
 PYTHON_SCRIPT
 
 echo ""
-echo "====================================="
-echo "RNA count matrix generation complete!"
-echo "====================================="
-echo "Outputs:"
-echo "  Raw counts: ${OUTPUT_PREFIX}_raw.txt"
-echo "  Count matrix (CSV): ${OUTPUT_PREFIX}_matrix.csv"
-echo "  Per-cell summary: ${OUTPUT_PREFIX}_summary.csv"
-echo ""
+echo "Finished: $(date -Iseconds)"
