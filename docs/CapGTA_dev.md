@@ -148,22 +148,6 @@ Notes:
 
 ---
 
-## Deprecated (superseded by spc-align)
-
-The following scripts implement the old in-repo demux/align/QC pipeline and are
-obsolete now that Modules 2 and 3 handle that work. Kept for historical
-reference; safe to delete once no notebook references them:
-
-- `PP_array_gta.sh`, `PP_array_gta_star_only.sh` — STAR alignment array
-- `sc_extract_preprocess_qc_array.sh` — per-cell extraction + MarkDuplicates + Picard + bigwig
-- `calculate_exonic_enrichment.py` — exonic enrichment metric
-- `build_wbcel235_star_index.sh` — STAR index build
-- `submit_final_processing.sh` — old orchestrator (called per-cell variant calling + merge)
-- `sc_variant_calling_bcftools_array.sh` — per-cell (not joint) variant calling
-- `merge_sc_vcfs.sh` — `bcftools merge` union of per-cell VCFs (not true joint)
-
----
-
 ## Future work
 
 ### Expression model v2
