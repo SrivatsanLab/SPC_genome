@@ -31,10 +31,17 @@ Scripts (in `scripts/CapGTA/`):
 
 Submit:
 ```bash
-sbatch --wrap='bash scripts/CapGTA/submit_rna_counts.sh \
+# Spliced-only (default; conservative RNA proxy)
+bash scripts/CapGTA/submit_rna_counts.sh \
     results/<sample>/real_cells.csv \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
-    results/<sample>/rna_counts'
+    results/<sample>/rna_counts
+
+# All reads (skip spliced filter; higher counts, DNA contamination)
+bash scripts/CapGTA/submit_rna_counts.sh --all-reads \
+    results/<sample>/real_cells.csv \
+    /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
+    results/<sample>/rna_counts_all_reads
 ```
 
 Output layout:
