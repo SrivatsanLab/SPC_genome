@@ -2,10 +2,12 @@
 ###########################################################################################################################
 # Submit RNA count matrix generation for a set of single-cell BAMs.
 #
-# Two-stage pipeline:
+# Three-stage pipeline:
 #   1. filter_spliced_reads_array.sh — SLURM array, one task per cell, writes spliced-only BAMs.
 #   2. create_rna_count_matrix.sh    — depends afterok on the array; runs featureCounts on the
 #                                      filtered BAMs and writes a gene_id x barcode matrix.
+#   3. counts_matrix_to_h5ad.py      — depends afterok on the counts job; converts the matrix
+#                                      CSV into a sparse .h5ad AnnData for scanpy.
 #
 # Usage:
 #   scripts/CapGTA/submit_rna_counts.sh \
@@ -20,6 +22,7 @@
 #   rna_counts_raw.txt
 #   rna_counts_matrix.csv
 #   rna_counts_summary.csv
+#   rna_counts.h5ad           # scanpy-ready AnnData
 ###########################################################################################################################
 
 set -euo pipefail
@@ -104,5 +107,18 @@ counts_job=$(sbatch --parsable \
     "${OUTPUT_PREFIX}")
 
 echo "Submitted count-matrix job:     ${counts_job} (depends on ${filter_job})"
+
+# --- Submit h5ad conversion with dependency ----------------------------------
+h5ad_job=$(sbatch --parsable \
+    --dependency="afterok:${counts_job}" \
+    -J counts_to_h5ad \
+    -o SLURM_outs/%x_%j.out \
+    -p campus-new -c 1 --mem=8G -t 30:00 \
+    --wrap="python3 '${SCRIPTS_DIR}/counts_matrix_to_h5ad.py' \
+        '${OUTPUT_PREFIX}_matrix.csv' \
+        '${OUTPUT_PREFIX}.h5ad' \
+        --summary '${OUTPUT_PREFIX}_summary.csv'")
+
+echo "Submitted h5ad conversion:      ${h5ad_job} (depends on ${counts_job})"
 echo ""
-echo "Monitor with:  squeue -j ${filter_job},${counts_job}"
+echo "Monitor with:  squeue -j ${filter_job},${counts_job},${h5ad_job}"

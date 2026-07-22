@@ -26,7 +26,8 @@ run `featureCounts` across all filtered BAMs.
 Scripts (in `scripts/CapGTA/`):
 - `filter_spliced_reads_array.sh` — SLURM array, one task per cell.
 - `create_rna_count_matrix.sh` — single multi-threaded featureCounts job.
-- `submit_rna_counts.sh` — orchestrator (submits the array + count job with `afterok`).
+- `counts_matrix_to_h5ad.py` — convert the matrix CSV into a sparse `.h5ad` for scanpy.
+- `submit_rna_counts.sh` — orchestrator (array → count job → h5ad, chained with `afterok`).
 
 Submit:
 ```bash
@@ -44,7 +45,8 @@ results/<sample>/rna_counts/
 ├── bam_list_spliced.txt
 ├── rna_counts_raw.txt              # featureCounts raw
 ├── rna_counts_matrix.csv           # gene_id x barcode
-└── rna_counts_summary.csv          # per-cell totals + genes detected
+├── rna_counts_summary.csv          # per-cell totals + genes detected
+└── rna_counts.h5ad                 # scanpy-ready AnnData (cells x genes, sparse)
 ```
 
 Notes:
