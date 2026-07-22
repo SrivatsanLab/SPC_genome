@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
 """Assemble per-cell per-gene RNA expression estimates for a coassay run.
 
-Model (simple excess):
-    lambda[c] = intergenic_fragments[c] / intergenic_bp     # per-cell DNA baseline
-    R_exp[c, g] = lambda[c] * exonic_length[g]
-    R_rna[c, g] = max(0, R_obs[c, g] - R_exp[c, g])
+Model (simple-excess, NoFeatures baseline):
 
-Where R_obs is the featureCounts fragment count per (cell, gene), and
-exonic_length is featureCounts's Length column (union of exons per gene).
+    non_exonic_bp    = sum(chromosome lengths) - sum(featureCounts Length column)
+    lambda[c]        = Unassigned_NoFeatures[c] / non_exonic_bp
+    R_exp[c, g]      = lambda[c] * exonic_length[g]
+    R_rna[c, g]      = max(0, R_obs[c, g] - R_exp[c, g])
+
+The per-cell DNA baseline `lambda` comes from featureCounts' own
+`Unassigned_NoFeatures` column (fragments that passed all filters but did
+not overlap any exon feature by >= --fracOverlap). This matches R_obs's
+fragment definition exactly and, importantly, includes intronic sequence
+in the baseline — which is critical for WGA data where amplification
+is biased toward gene bodies vs. intergenic.
 
 Inputs:
     - featureCounts raw output (from create_rna_count_matrix.sh --all-reads)
-    - intergenic BED (from make_intergenic_bed.py)
-    - directory of per-cell intergenic-count TSVs (from count_intergenic_reads_array.sh)
+    - the sibling .summary file
+    - reference FASTA index (.fai) for the total genome size
 
 Outputs at <output_prefix>:
     _matrix.csv     gene_id x barcode   float R_rna
     .h5ad           AnnData: X = R_rna (sparse float32), layers = raw_exon / expected,
-                    obs = intergenic_fragments / lambda_intergenic,
+                    obs = background_fragments / lambda_background,
                     var = exonic_length
 """
 
 import argparse
-import glob
 import sys
 from pathlib import Path
 
@@ -32,27 +37,24 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 
 
-def total_bed_bp(bed_path: Path) -> int:
+def total_genome_bp(fai_path: Path) -> int:
     total = 0
-    with bed_path.open() as fh:
+    with fai_path.open() as fh:
         for line in fh:
-            if not line.strip() or line.startswith('#'):
-                continue
             fields = line.rstrip('\n').split('\t')
-            total += int(fields[2]) - int(fields[1])
+            total += int(fields[1])
     return total
 
 
-def load_per_cell_counts(per_cell_dir: Path) -> pd.DataFrame:
-    rows = []
-    for tsv in sorted(glob.glob(str(per_cell_dir / '*.tsv'))):
-        with open(tsv) as fh:
-            for line in fh:
-                barcode, count = line.rstrip('\n').split('\t')
-                rows.append((barcode, int(count)))
-    if not rows:
-        raise RuntimeError(f'No per-cell TSVs found in {per_cell_dir}')
-    return pd.DataFrame(rows, columns=['barcode', 'intergenic_fragments']).set_index('barcode')
+def load_no_features(summary_path: Path) -> pd.Series:
+    """Return a Series indexed by BAM path, values = Unassigned_NoFeatures count."""
+    df = pd.read_csv(summary_path, sep='\t')
+    if 'Status' not in df.columns:
+        raise ValueError(f'{summary_path}: first column is not "Status"')
+    row = df[df['Status'] == 'Unassigned_NoFeatures']
+    if row.empty:
+        raise ValueError(f'{summary_path}: no Unassigned_NoFeatures row')
+    return row.iloc[0].drop('Status').astype(int)
 
 
 def main() -> int:
@@ -60,21 +62,17 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument('featurecounts_raw', type=Path, help='featureCounts raw output (rna_counts_raw.txt)')
-    p.add_argument('intergenic_bed', type=Path, help='intergenic BED (for total bp)')
-    p.add_argument('per_cell_dir', type=Path, help='directory of {barcode}.tsv intergenic counts')
+    p.add_argument('featurecounts_summary', type=Path, help='featureCounts .summary file')
+    p.add_argument('fai', type=Path, help='reference FASTA index (.fai)')
     p.add_argument('output_prefix', type=Path, help='output prefix (writes _matrix.csv and .h5ad)')
     args = p.parse_args()
 
-    for f in (args.featurecounts_raw, args.intergenic_bed):
+    for f in (args.featurecounts_raw, args.featurecounts_summary, args.fai):
         if not f.is_file():
             print(f'Error: not found: {f}', file=sys.stderr)
             return 1
-    if not args.per_cell_dir.is_dir():
-        print(f'Error: per-cell dir not found: {args.per_cell_dir}', file=sys.stderr)
-        return 1
 
-    intergenic_bp = total_bed_bp(args.intergenic_bed)
-    print(f'Intergenic bases: {intergenic_bp:,}')
+    genome_bp = total_genome_bp(args.fai)
 
     fc = pd.read_csv(args.featurecounts_raw, sep='\t', comment='#')
     gene_ids = fc['Geneid'].astype(str).to_numpy()
@@ -82,26 +80,35 @@ def main() -> int:
     bam_cols = list(fc.columns[6:])
     barcodes = np.array([Path(c).stem for c in bam_cols])
     r_obs = fc[bam_cols].to_numpy(dtype=np.int32).T  # cells x genes
-    print(f'featureCounts matrix: {r_obs.shape[0]} cells x {r_obs.shape[1]} genes')
 
-    per_cell = load_per_cell_counts(args.per_cell_dir)
-    per_cell['lambda_intergenic'] = per_cell['intergenic_fragments'] / intergenic_bp
-    print(f'Per-cell intergenic counts: {len(per_cell)} cells')
-
-    aligned = per_cell.reindex(barcodes)
-    missing = aligned.index[aligned['intergenic_fragments'].isna()]
-    if len(missing) > 0:
-        print(f'Error: missing intergenic counts for {len(missing)} cells (first 5: {list(missing[:5])})', file=sys.stderr)
+    exonic_bp = int(exonic_length.sum())
+    non_exonic_bp = genome_bp - exonic_bp
+    if non_exonic_bp <= 0:
+        print(f'Error: non-exonic bp <= 0 (genome={genome_bp:,}, exonic_sum={exonic_bp:,})', file=sys.stderr)
         return 1
 
-    lam = aligned['lambda_intergenic'].to_numpy()
+    print(f'Genome:          {genome_bp:,} bp')
+    print(f'Exonic (sum L):  {exonic_bp:,} bp')
+    print(f'Non-exonic:      {non_exonic_bp:,} bp')
+    print(f'R_obs matrix:    {r_obs.shape[0]} cells x {r_obs.shape[1]} genes')
+
+    no_features = load_no_features(args.featurecounts_summary)
+    # Reindex by BAM path to match fc columns exactly, then align to our barcode order.
+    no_features = no_features.reindex(bam_cols)
+    if no_features.isna().any():
+        missing = [c for c, v in zip(bam_cols, no_features) if pd.isna(v)]
+        print(f'Error: summary missing NoFeatures for {len(missing)} BAMs (first 5: {missing[:5]})', file=sys.stderr)
+        return 1
+    bg_fragments = no_features.to_numpy(dtype=np.int64)
+
+    lam = bg_fragments / non_exonic_bp
 
     r_exp = np.outer(lam, exonic_length).astype(np.float32)
     r_rna = np.maximum(0, r_obs.astype(np.float32) - r_exp)
 
-    n_zero_lambda = int((lam == 0).sum())
-    if n_zero_lambda:
-        print(f'Warning: {n_zero_lambda} cells with zero intergenic fragments — R_rna == R_obs for those.')
+    n_zero = int((bg_fragments == 0).sum())
+    if n_zero:
+        print(f'Warning: {n_zero} cells with zero background fragments — R_rna == R_obs for those.')
 
     args.output_prefix.parent.mkdir(parents=True, exist_ok=True)
 
@@ -112,8 +119,8 @@ def main() -> int:
     adata = ad.AnnData(
         X=csr_matrix(r_rna),
         obs=pd.DataFrame({
-            'intergenic_fragments': aligned['intergenic_fragments'].to_numpy(),
-            'lambda_intergenic':    lam,
+            'background_fragments': bg_fragments,
+            'lambda_background':    lam,
         }, index=pd.Index(barcodes, name='barcode')),
         var=pd.DataFrame({
             'exonic_length': exonic_length,
@@ -121,8 +128,10 @@ def main() -> int:
     )
     adata.layers['raw_exon'] = csr_matrix(r_obs)
     adata.layers['expected'] = csr_matrix(r_exp)
-    adata.uns['intergenic_bp'] = intergenic_bp
-    adata.uns['model'] = 'simple_excess'  # R_rna = max(0, R_obs - lambda * exonic_length)
+    adata.uns['genome_bp'] = genome_bp
+    adata.uns['exonic_bp'] = exonic_bp
+    adata.uns['non_exonic_bp'] = non_exonic_bp
+    adata.uns['model'] = 'noFeatures_excess'
 
     h5ad_path = args.output_prefix.with_suffix('.h5ad')
     adata.write_h5ad(h5ad_path)
@@ -131,10 +140,12 @@ def main() -> int:
     print()
     print('Summary:')
     print(f'  shape:                   {adata.n_obs} cells x {adata.n_vars} genes')
-    print(f'  median lambda:           {np.median(lam):.3e} reads/bp')
+    print(f'  median bg fragments:     {int(np.median(bg_fragments)):,}')
+    print(f'  median lambda:           {np.median(lam):.3e} fragments/bp')
     print(f'  mean R_obs sum / cell:   {r_obs.sum(axis=1).mean():.0f}')
     print(f'  mean R_exp sum / cell:   {r_exp.sum(axis=1).mean():.0f}')
     print(f'  mean R_rna sum / cell:   {r_rna.sum(axis=1).mean():.0f}')
+    print(f'  median R_rna / R_obs:    {np.median(r_rna.sum(axis=1) / np.maximum(r_obs.sum(axis=1), 1)):.3f}')
     return 0
 
 
