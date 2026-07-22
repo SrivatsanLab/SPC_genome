@@ -99,6 +99,53 @@ Notes:
   per task.
 - WBcel235 with 1 Mb regions → 104 array tasks.
 
+### Objective 3 — RNA expression estimate (excess over intergenic baseline)
+
+Neither spliced-only (too sparse) nor all-reads (dominated by WGA DNA background) is a
+great per-gene expression proxy on its own. This step models the DNA baseline explicitly
+and returns the excess:
+
+```
+lambda[c]   = intergenic_fragments[c] / intergenic_bp
+R_exp[c, g] = lambda[c] * exonic_length[g]
+R_rna[c, g] = max(0, R_obs[c, g] - R_exp[c, g])
+```
+
+Where `R_obs` and `exonic_length` come straight from the all-reads featureCounts output,
+and `lambda` is a per-cell fragment rate estimated over gene-free intergenic regions
+(gene body ± 5 kb flank, min region 10 kb).
+
+Scripts (in `scripts/CapGTA/`):
+- `make_intergenic_bed.py` — build intergenic BED from GTF + FAI.
+- `count_intergenic_reads_array.sh` — SLURM array, one task per cell (samtools view -c -L).
+- `assemble_expression_matrix.py` — reducer; writes CSV + h5ad with `raw_exon` and `expected` layers.
+- `submit_rna_expression.sh` — orchestrator (BED → array → reducer, `afterok` chain).
+
+Submit (requires all-reads featureCounts to have already run):
+```bash
+bash scripts/CapGTA/submit_rna_expression.sh \
+    results/<sample>/real_cells.csv \
+    /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
+    /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
+    results/<sample>/rna_counts_all_reads/rna_counts_raw.txt \
+    results/<sample>/rna_expression
+```
+
+Output layout:
+```
+results/<sample>/rna_expression/
+├── bam_list.txt
+├── intergenic.bed
+├── per_cell/{barcode}.tsv
+├── rna_expression_matrix.csv       # gene_id x barcode, float R_rna
+└── rna_expression.h5ad             # X = R_rna, layers = raw_exon / expected
+```
+
+Notes:
+- fragment definition matches featureCounts: proper pairs, first-in-pair counted, dupes/secondary/etc. excluded.
+- The h5ad `.uns` records `intergenic_bp` and `model = simple_excess` for provenance.
+- Room to grow (v2): per-gene overdispersion (NB rather than Poisson-implied), Beta shrinkage on `f_RNA = (R_obs - R_exp) / R_obs`, per-gene FDR flag.
+
 ---
 
 ## Deprecated (superseded by spc-align)
@@ -119,10 +166,10 @@ reference; safe to delete once no notebook references them:
 
 ## Future work
 
-### RNA rescue algorithm (Phase 3, previously planned)
-Statistical reclassification of exonic reads from DNA→RNA using per-gene Poisson
-enrichment tests. Was scoped against the old two-BAM (DNA/RNA) layout; needs to
-be re-derived against the unified single-BAM layout from spc-align.
+### Expression model v2
+Extend the simple-excess estimator: Beta shrinkage on the per-gene RNA fraction,
+per-gene NB fit for overdispersion, per-gene FDR flag for "expressed above baseline".
+See `assemble_expression_matrix.py` for the extension point.
 
 ### HTML dashboard
 Analogous to spc-align's `align_report.html`, but summarizing downstream
