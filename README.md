@@ -1,8 +1,10 @@
-# SPC Genome Pipelines
+# SPC Genome
 
-Pipelines for processing single-cell whole genome sequencing (CapWGS) and genome-transcriptome co-assay (CapGTA) data. Includes tools for alignment, cell detection, variant calling, and AnnData generation.
+This repository contains the code used for preprocessing and analysis of genomic data from our paper: Capsule-based Whole Genome Sequencing and lineage tracing - [bioRxiv](https://www.biorxiv.org/content/10.1101/2025.03.14.643253v1)
 
-## Installation
+Here you will find pipelines and tools for processing and analyzing capsule-based single-cell whole genome sequencing (CapWGS) and genome-transcriptome co-assay (CapGTA) data, as well as the code used to produce all data and figures for our paper. This includes jupyter notebooks for figures and statistical analyses, and scripts to process public data for benchmarking, and bulk WGS data from the K562 mutation accumulation experiment and HSC donor samples. 
+
+## Setup
 
 ```bash
 git clone https://github.com/SrivatsanLab/SPC_genome
@@ -13,43 +15,23 @@ micromamba create -n spc_genome -f environment.yml
 micromamba activate spc_genome
 ```
 
-## Pipelines
+#  Capsule-based single-cell whole genome sequencing (CapWGS)
 
-### CapWGS_PP.sh - Whole Genome Sequencing with Variant Calling
+### preprocessing: `CapWGS_PP.sh`
 
 Complete pipeline for single-cell whole genome sequencing data:
 - BWA-MEM alignment
-- Cell detection from barcode counts
+- Cell detection from per-barcode read counts
 - Single-cell BAM extraction
 - GATK variant calling (HaplotypeCaller + GenotypeGVCFs)
-- AnnData generation with variant calls
 
-**Output:** `data/{sample}/`, `data/{sample}/sc_outputs/`, `results/{sample}/variants.h5ad`
+**Outputs:**
+- single cell bam files
+- single cell .g.vcf files
+- joint variant call set in .vcf format
+- thorough per cell qc metrics, including lorenz curves
 
-### CapWGS_PP_QC_only.sh - Coverage QC Pipeline
-
-QC-only pipeline for coverage benchmarking (no variant calling):
-- BWA-MEM alignment
-- Cell detection
-- Single-cell BAM extraction
-- BigWig generation
-- Lorenz curve analysis for coverage uniformity
-
-**Output:** `data/{sample}/sc_outputs/`, `results/{sample}/` (QC metrics, Lorenz curves)
-
-### CapGTA_PP.sh - Genome-Transcriptome Co-Assay
-
-Pipeline for simultaneous genome and transcriptome profiling:
-- STAR alignment (separates DNA/RNA by splice junctions)
-- Dual-modality cell detection
-- Single-cell DNA and RNA BAM extraction
-- BCFtools variant calling on DNA
-- RNA count matrix generation
-- Dual AnnData output (variants + gene expression)
-
-**Output:** `data/{sample}/sc_outputs/`, `results/{sample}/variants.h5ad`, `results/{sample}/rna_counts.h5ad`
-
-## Usage Example
+### Usage Example
 
 ```bash
 ./CapWGS_PP.sh \
@@ -75,7 +57,7 @@ Pipeline for simultaneous genome and transcriptome profiling:
 
 All pipelines support the same argument structure and can optionally use `config.yaml` for default values.
 
-## Configuration (Optional)
+### Configuration (Optional)
 
 Create `config.yaml` to set defaults:
 
@@ -98,47 +80,77 @@ output:
 
 Command-line arguments override config values.
 
-## Directory Structure
+# capsule-based single-cell genome-transcriptome co-assay (CapGTA)
 
-```
-SPC_genome/
-├── CapWGS_PP.sh              # Main WGS pipeline
-├── CapWGS_PP_QC_only.sh      # QC-only pipeline
-├── CapGTA_PP.sh              # Genome-transcriptome pipeline
-├── scripts/                  # Pipeline scripts
-│   ├── CapWGS/              # WGS + GATK scripts
-│   ├── CapWGS_QC/           # Coverage QC scripts
-│   ├── CapGTA/              # Genome-transcriptome scripts
-│   ├── bulk/                # Bulk processing utilities
-│   └── utils/               # Shared utilities
-├── bin/                      # Experiment metadata and one-off scripts
-├── data/                     # Alignments and single-cell outputs (gitignored)
-│   └── {sample}/
-│       ├── {sample}.bam     # Bulk alignment
-│       └── sc_outputs/      # Single-cell BAMs, VCFs, bigwigs
-├── results/                  # Final outputs (gitignored)
-│   └── {sample}/
-│       ├── variants.h5ad    # Variant AnnData
-│       ├── rna_counts.h5ad  # RNA AnnData (CapGTA only)
-│       └── *_qc_summary.csv # QC metrics
-├── notebooks/                # Analysis notebooks
-│   ├── K562_tree/           # K562 tree experiment analysis
-│   ├── benchmarking/        # CapWGS benchmarking analysis
-│   └── PolE_worm_pilot/     # C. elegans CapGTA analysis
-└── environment.yml           # Micromamba environment
+### Upstream preprocessing
 
+1. [spc-demultiplex](https://github.com/SrivatsanLab/SPC-demultiplex)- for demultiplexing combinatorial index barcodes. Outputs per-barcode fastq files. 
+2. [spc-align](https://github.com/SrivatsanLab/SPC-align)- using `STAR` splice aware alignment to WBcel235. Outputs per-barcode bam files.
+
+Downstream pipelines (below) require a `real_cells.csv`, which has columns barcode,path. User should examine qc metrics from `spc-align` to determine which barcodes are associated with occupied capsules (real cells) to create this csv for the downstream gene expression and variant calling pipelines. 
+
+### Gene expression preprocessing
+
+`submit_gex_soupx_pipeline.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
+
+1. Spliced-read filter (CIGAR `N`) → featureCounts on real cells → per-cell integer count matrix.
+2. Scanpy preprocessing: QC, splice-junction correction, HVG, PCA, UMAP, Leiden clustering.
+3. Same count pipeline on a random subset of empty droplets to build an ambient-RNA soup profile — with a WGA-aware QC filter that drops empties dominated by a single amplified transcript.
+4. `SoupX` ambient decontamination against real-cell clusters.
+5. Re-preprocess on the decontaminated counts to get final clusters.
+
+```bash
+scripts/CapGTA/submit_gex_soupx_pipeline.sh \
+    results/<sample>/real_cells.csv \
+    /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
+    results/<sample> \
+    [--n-empties 5000] [--resolution 2]
 ```
 
-## Analysis Notebooks
+**Required arguments:**
+- `<real_cells.csv>` cells to process (barcode,bam_path from spc-align)
+- `<annotation.gtf>` reference GTF (WBcel235 iGenomes)
+- `<output_dir>` all outputs land here
 
-- **K562_tree/** - K562 lineage tree experiment
-  - `sc_analysis.ipynb` - Single-cell variant analysis
-  - `bulk_spectra_analysis.ipynb` - Mutational spectra
-- **benchmarking/** - CapWGS validation
-  - `benchmarking.ipynb` - Comparison with public scWGS datasets
-- **PolE_worm_pilot/** - C. elegans CapGTA analysis
-  - `PolE_worm_pilot_analysis.ipynb` - Multi-modal analysis
+**Key outputs** (under `<output_dir>/`):
+- `adata_gex_spliced_soupx_processed.h5ad` — **final** h5ad: SoupX-decontaminated counts, preprocessed with clusters, ready for annotation
+- `adata_gex_spliced.h5ad` — preprocessed pre-SoupX (useful for comparison)
+- `rna_counts/` and `soupx_empties/rna_counts/` — raw featureCounts output for real cells and empties
+- `soupx_out/soupx_summary.csv` — per-cell contamination fractions (`rho`)
+- `gene_junctions.csv` — per-gene splice-junction counts used for splice-count normalization
 
-## Citation
+### Variant Calling
 
-Capsule-based Whole Genome Sequencing and lineage tracing - [bioRxiv](https://www.biorxiv.org/content/10.1101/2025.03.14.643253v1)
+`submit_joint_variant_calling.sh` performs true joint variant calling with `bcftools mpileup -b bam_list | call -mv`, parallelized by fixed-size regions and concatenated into a single VCF.
+
+```bash
+sbatch --wrap='bash scripts/CapGTA/submit_joint_variant_calling.sh \
+    results/<sample>/real_cells.csv \
+    /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
+    results/<sample>/joint_variants \
+    1000000'
+```
+
+**Required arguments:**
+- `<real_cells.csv>` cells to include (barcode,bam_path)
+- `<reference.fa>` indexed reference FASTA (`.fai` required alongside)
+- `<output_dir>` all outputs land here
+- `<region_size>` bp per region for parallelization (1000000 = 1 Mb → ~104 tasks on WBcel235)
+
+**Key outputs** (under `<output_dir>/`):
+- `joint_variants.vcf.gz` (+ `.csi`) — single joint VCF across all cells; `FORMAT/AD, FORMAT/DP` retained for downstream cellspec analysis
+- `per_region/region_*.vcf.gz` — per-region intermediates
+- `bam_list.txt`, `regions.txt` — inputs echoed for reproducibility
+
+
+# Phylogenetic and mutation spectrum analysis
+
+
+# Bulk WGS preprocessing
+
+
+# Public data preprocessing
+
+
+# Analysis Notebooks
+
