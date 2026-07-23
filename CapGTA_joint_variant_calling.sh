@@ -7,7 +7,7 @@
 #   2. concat_region_vcfs.sh          — depends afterok on the array; stitches per-region VCFs
 #
 # Usage:
-#   scripts/CapGTA/submit_joint_variant_calling.sh \
+#   bash CapGTA_joint_variant_calling.sh \
 #       <real_cells.csv> \
 #       <reference.fa> \
 #       <output_dir> \
@@ -32,7 +32,8 @@ REFERENCE_FA="$2"
 OUTPUT_DIR="$3"
 REGION_SIZE="${4:-1000000}"
 
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="${REPO_ROOT}/scripts/CapGTA"
 
 for f in "${CELLS_CSV}" "${REFERENCE_FA}" "${REFERENCE_FA}.fai"; do
     if [ ! -f "${f}" ]; then

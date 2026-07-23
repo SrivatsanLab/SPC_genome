@@ -91,16 +91,16 @@ Downstream pipelines (below) require a `real_cells.csv`, which has columns barco
 
 ### Gene expression preprocessing
 
-`submit_gex_soupx_pipeline.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
+`CapGTA_gex_soupx_pipeline.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
 
 1. Spliced-read filter (CIGAR `N`) → featureCounts on real cells → per-cell integer count matrix.
-2. Scanpy preprocessing: QC, splice-junction correction, HVG, PCA, UMAP, Leiden clustering.
+2. Scanpy preprocessing: QC, WBID→gene-symbol rename, splice-junction correction, HVG, PCA, UMAP, Leiden clustering.
 3. Same count pipeline on a random subset of empty droplets to build an ambient-RNA soup profile — with a WGA-aware QC filter that drops empties dominated by a single amplified transcript.
 4. `SoupX` ambient decontamination against real-cell clusters.
-5. Re-preprocess on the decontaminated counts to get final clusters.
+5. Re-preprocess on the decontaminated counts (with cuticle-gene drop) to get final clusters.
 
 ```bash
-scripts/CapGTA/submit_gex_soupx_pipeline.sh \
+bash CapGTA_gex_soupx_pipeline.sh \
     results/<sample>/real_cells.csv \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
     results/<sample> \
@@ -121,14 +121,14 @@ scripts/CapGTA/submit_gex_soupx_pipeline.sh \
 
 ### Variant Calling
 
-`submit_joint_variant_calling.sh` performs true joint variant calling with `bcftools mpileup -b bam_list | call -mv`, parallelized by fixed-size regions and concatenated into a single VCF.
+`CapGTA_joint_variant_calling.sh` performs true joint variant calling with `bcftools mpileup -b bam_list | call -mv`, parallelized by fixed-size regions and concatenated into a single VCF.
 
 ```bash
-sbatch --wrap='bash scripts/CapGTA/submit_joint_variant_calling.sh \
+bash CapGTA_joint_variant_calling.sh \
     results/<sample>/real_cells.csv \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
     results/<sample>/joint_variants \
-    1000000'
+    1000000
 ```
 
 **Required arguments:**
