@@ -67,6 +67,10 @@ docs/summaries/
 # Logs
 *.log
 
+# Core dumps
+core
+**/core
+
 # Package development (pip install locally, don't track source)
 mutation_profiling/
 cellspec/
