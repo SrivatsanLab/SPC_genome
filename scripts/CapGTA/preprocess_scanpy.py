@@ -7,7 +7,9 @@ Pipeline:
     [if --drop-cuticle: drop col-* + dpy-7/sqt-1/sqt-3/rol-6/bli-1/bli-2]
     calculate_qc_metrics
     save raw integer counts to .layers['counts']   (unconditional; overwrites)
-    [if --junction-csv: scale .X columns by 1/n_junctions; single-exon → 0]
+    [scale .X columns by 1 / (n_junctions * exonic_length_kb) when the matching
+        --junction-csv / --gene-lengths-csv are provided; either factor omitted
+        when its CSV is not passed; single-exon (n_junctions = 0) genes → 0]
     normalize_total → log1p
     highly_variable_genes (n_top_genes, batch_key)
     pca
@@ -16,15 +18,16 @@ Pipeline:
     leiden (flavor='igraph', n_iterations=2, resolution)
     write h5ad
 
-Junction correction is applied to .X only; .layers['counts'] always holds the
-raw integer counts as-loaded, which is what SoupX and other count-model tools
-expect. The junction CSV is keyed on gene_id (WBID), so reindexing uses
-.var['wormbase_id'] not var_names.
+Junction + length correction is applied to .X only; .layers['counts'] always
+holds the raw integer counts as-loaded, which is what SoupX and other
+count-model tools expect. Both CSVs are keyed on gene_id (WBID), so reindexing
+uses .var['wormbase_id'] not var_names.
 
 Usage:
     preprocess_scanpy.py <input.h5ad> <output.h5ad> --gtf <annotation.gtf> \
         [--drop-cuticle] \
         [--junction-csv <gene_junctions.csv>] \
+        [--gene-lengths-csv <gene_lengths.csv>] \
         [--resolution 2] [--n-hvg 2000] [--batch-key sample] \
         [--min-dist 0.1] [--spread 5]
 """
@@ -60,10 +63,22 @@ def gtf_gid_to_symbol(gtf_path: Path) -> dict[str, str]:
     return m
 
 
+CUTICLE_PREFIXES = ('col-', 'cut-', 'idpa-')
+CUTICLE_SYMBOLS = {
+    # cuticle-collagen dpy genes (dpy-1, dpy-11, dpy-18+ have non-cuticle roles → excluded)
+    'dpy-2', 'dpy-3', 'dpy-4', 'dpy-5', 'dpy-6', 'dpy-7',
+    'dpy-8', 'dpy-9', 'dpy-10', 'dpy-13', 'dpy-14', 'dpy-17',
+    # squat / roller / blister cuticle families
+    'sqt-1', 'sqt-2', 'sqt-3',
+    'rol-1', 'rol-3', 'rol-4', 'rol-5', 'rol-6', 'rol-8',
+    'bli-1', 'bli-2', 'bli-3', 'bli-4', 'bli-5', 'bli-6',
+}
+
+
 def cuticle_exclude_symbols(gid2sym: dict[str, str]) -> set[str]:
-    """Cuticle gene symbols: all col-* collagens + a curated cuticle set."""
-    syms = {s for s in gid2sym.values() if s.lower().startswith('col')}
-    syms.update(['dpy-7', 'sqt-1', 'sqt-3', 'rol-6', 'bli-1', 'bli-2'])
+    """Cuticle gene symbols: all col-/cut-/idpa- family members + curated cuticle set."""
+    syms = {s for s in gid2sym.values() if s.lower().startswith(CUTICLE_PREFIXES)}
+    syms.update(CUTICLE_SYMBOLS)
     return syms
 
 
@@ -77,6 +92,8 @@ def main() -> int:
                    help='drop col-* collagens plus dpy-7, sqt-1, sqt-3, rol-6, bli-1, bli-2')
     p.add_argument('--junction-csv', type=Path, default=None,
                    help='gene_junctions.csv (columns: gene_id,n_junctions) for splice-count correction')
+    p.add_argument('--gene-lengths-csv', type=Path, default=None,
+                   help='gene_lengths.csv (columns: gene_id,exonic_length) for cDNA-length correction')
     p.add_argument('--resolution', type=float, default=2.0)
     p.add_argument('--n-hvg', type=int, default=2000)
     p.add_argument('--batch-key', default='sample')
@@ -123,20 +140,48 @@ def main() -> int:
     # Always save the loaded integer counts before any transformation.
     adata.layers['counts'] = adata.X.copy()
 
-    if args.junction_csv is not None:
-        if not args.junction_csv.is_file():
-            print(f'Error: junction CSV not found: {args.junction_csv}', file=sys.stderr)
-            return 1
+    if args.junction_csv is not None or args.gene_lengths_csv is not None:
         import pandas as pd
-        junc = pd.read_csv(args.junction_csv).set_index('gene_id')
-        n_junc = junc['n_junctions'].reindex(adata.var['wormbase_id']).fillna(0).to_numpy()
-        adata.var['n_junctions'] = n_junc
-        scale = np.zeros_like(n_junc, dtype=float)
-        scale[n_junc > 0] = 1.0 / n_junc[n_junc > 0]
+        wbids = adata.var['wormbase_id']
+        n_genes = adata.n_vars
+        scale = np.ones(n_genes, dtype=float)
+        keep = np.ones(n_genes, dtype=bool)
+        parts = []
+
+        if args.junction_csv is not None:
+            if not args.junction_csv.is_file():
+                print(f'Error: junction CSV not found: {args.junction_csv}', file=sys.stderr)
+                return 1
+            junc = pd.read_csv(args.junction_csv).set_index('gene_id')
+            n_junc = junc['n_junctions'].reindex(wbids).fillna(0).to_numpy()
+            adata.var['n_junctions'] = n_junc
+            has_junc = n_junc > 0
+            scale = np.where(has_junc, scale / np.where(has_junc, n_junc, 1), 0.0)
+            keep &= has_junc
+            parts.append(f'{int(has_junc.sum())}/{n_genes} with >=1 junction')
+
+        if args.gene_lengths_csv is not None:
+            if not args.gene_lengths_csv.is_file():
+                print(f'Error: gene lengths CSV not found: {args.gene_lengths_csv}', file=sys.stderr)
+                return 1
+            lens = pd.read_csv(args.gene_lengths_csv).set_index('gene_id')
+            exonic_bp = lens['exonic_length'].reindex(wbids).fillna(0).to_numpy()
+            adata.var['exonic_length'] = exonic_bp
+            has_len = exonic_bp > 0
+            length_kb = exonic_bp / 1000.0
+            scale = np.where(has_len, scale / np.where(has_len, length_kb, 1), 0.0)
+            keep &= has_len
+            parts.append(f'{int(has_len.sum())}/{n_genes} with exonic length')
+
+        scale[~keep] = 0.0
         X = adata.X if sp.issparse(adata.X) else sp.csr_matrix(adata.X)
         adata.X = (X @ sp.diags(scale)).tocsr()
-        n_scaled = int((n_junc > 0).sum())
-        print(f'Junction correction applied to .X ({n_scaled}/{len(n_junc)} genes with >=1 junction)')
+        factor_names = []
+        if args.junction_csv is not None:
+            factor_names.append('n_junctions')
+        if args.gene_lengths_csv is not None:
+            factor_names.append('exonic_length_kb')
+        print(f'Scaled .X by 1 / ({" * ".join(factor_names)})  ({"; ".join(parts)})')
 
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)

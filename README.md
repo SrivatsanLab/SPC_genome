@@ -94,7 +94,7 @@ Downstream pipelines (below) require a `real_cells.csv`, which has columns barco
 `CapGTA_gex_soupx_pipeline.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
 
 1. Spliced-read filter (CIGAR `N`) → featureCounts on real cells → per-cell integer count matrix.
-2. Scanpy preprocessing: QC, WBID→gene-symbol rename, splice-junction correction, HVG, PCA, UMAP, Leiden clustering.
+2. Scanpy preprocessing: QC, WBID→gene-symbol rename, per-gene scaling by `1 / (n_junctions * exonic_length_kb)` to correct for junction count and cDNA-length amplification bias, HVG, PCA, UMAP, Leiden clustering.
 3. Same count pipeline on a random subset of empty droplets to build an ambient-RNA soup profile — with a WGA-aware QC filter that drops empties dominated by a single amplified transcript.
 4. `SoupX` ambient decontamination against real-cell clusters.
 5. Re-preprocess on the decontaminated counts (with cuticle-gene drop) to get final clusters.
@@ -117,7 +117,7 @@ bash CapGTA_gex_soupx_pipeline.sh \
 - `adata_gex_spliced.h5ad` — preprocessed pre-SoupX (useful for comparison)
 - `rna_counts/` and `soupx_empties/rna_counts/` — raw featureCounts output for real cells and empties
 - `soupx_out/soupx_summary.csv` — per-cell contamination fractions (`rho`)
-- `gene_junctions.csv` — per-gene splice-junction counts used for splice-count normalization
+- `gene_junctions.csv` / `gene_lengths.csv` — per-gene splice-junction counts and union-exonic length used for the combined splice+length normalization
 
 ### Variant Calling
 

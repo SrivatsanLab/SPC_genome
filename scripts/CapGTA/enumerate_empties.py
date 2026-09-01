@@ -57,7 +57,7 @@ def main() -> int:
 
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     with args.output_csv.open('w', newline='') as fh:
-        w = csv.writer(fh)
+        w = csv.writer(fh, lineterminator='\n')
         w.writerow(['barcode', 'bam_path'])
         for bc, p in sample:
             w.writerow([bc, p])
