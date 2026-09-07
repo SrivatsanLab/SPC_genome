@@ -1,6 +1,7 @@
 # Data directories
 data/
 bin/
+CapGTA_dev/
 
 # Results and outputs
 results/
