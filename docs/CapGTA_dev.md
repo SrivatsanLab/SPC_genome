@@ -10,7 +10,7 @@ calling on the per-cell BAMs produced by `spc-align`.
 
 Two orchestrators live at the repo root, one per objective:
 
-- `CapGTA_gex_soupx_pipeline.sh`    — Objective 1 (GEX + SoupX + preprocess)
+- `bin/CapGTA_gex_preprocessing.sh` — Objective 1 (GEX + SoupX + preprocess)
 - `CapGTA_joint_variant_calling.sh` — Objective 2 (single-cell bcftools joint calling)
 
 Objective 3 (RNA expression estimator) is a small post-hoc job on the outputs
@@ -50,7 +50,7 @@ Stages (chained via SLURM `afterok`):
 
 Submit:
 ```bash
-bash CapGTA_gex_soupx_pipeline.sh \
+bash bin/CapGTA_gex_preprocessing.sh \
     results/<sample>/real_cells.csv \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
     results/<sample>/gex \
@@ -140,13 +140,13 @@ separately-counted intergenic bed) matches R_obs's fragment definition exactly a
 includes intronic sequence — important for WGA data where amplification is biased
 toward gene bodies vs. intergenic.
 
-Scripts (in `scripts/CapGTA/`):
+Scripts (in `CapGTA_dev/scripts/CapGTA/` — untracked):
 - `assemble_expression_matrix.py` — reads featureCounts raw + .summary + .fai; writes CSV + h5ad.
 - `submit_rna_expression.sh` — one-line sbatch wrapper around the assembler.
 
 Submit (requires an all-reads featureCounts run — see § Objective 1's `submit_rna_counts.sh --all-reads`):
 ```bash
-bash scripts/CapGTA/submit_rna_expression.sh \
+bash CapGTA_dev/scripts/CapGTA/submit_rna_expression.sh \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Sequence/WholeGenomeFasta/genome.fa \
     results/<sample>/rna_counts_all_reads/rna_counts_raw.txt \
     results/<sample>/rna_expression
@@ -167,8 +167,9 @@ Notes:
 
 ## Analysis utilities
 
-Standalone scripts under `scripts/CapGTA/` that operate on a terminal GEX h5ad
-(post-SoupX preprocess). Not part of the SLURM chain — invoked per analysis.
+Standalone scripts under `CapGTA_dev/scripts/CapGTA/` (untracked) that operate
+on a terminal GEX h5ad (post-SoupX preprocess). Not part of the SLURM chain —
+invoked per analysis.
 
 ### polyA/T per-cell QC
 - `count_polyat_per_cell.py` (+ `.sh` sbatch wrapper) — count reads with ≥N-bp A/T run per cell (samtools, process pool). Same rule as the `CapGTA_dev/` spliced+polyA/T RNA filter, so this is the natural QC. Two-step so the 6 GB h5ad is never fully rewritten: (1) counting → resumable CSV, (2) `--inject` writes the counts as a new `.obs` dataset via h5py (~20 KB touched).
@@ -203,7 +204,33 @@ spliced ∪ polyA/T (via `CapGTA_dev/scripts/submit_rna_counts_spliced_polyat.sh
 + `filter_spliced_polyat_reads*`). All other stages — preprocess, empties,
 SoupX, reimport, post-SoupX preprocess — reuse the main-pipeline scripts
 unchanged. Outputs are named `adata_gex_splicedpolyat_soupx_processed.h5ad` etc.
-so they don't collide with the spliced-only outputs.
+so they don't collide with the spliced-only outputs. Dev-only; lives entirely
+under `CapGTA_dev/` (untracked).
+
+### CENGEN coembedding + tissue annotation
+
+`notebooks/worm6_final_GEX.ipynb` is the end-to-end coembedding notebook. It
+loads the preprocessed CapGTA (arm B manual annotation h5ad) and the degraded
+CENGEN L4 reference (Taylor 2020, `taylor2020_degraded_seed0.h5ad` generated
+under `CapGTA_dev/next_iteration/T1_1_reference_degradation/`), and trains
+scVI → SCANVI on the concat.
+
+Winning configuration from the T1.1 sweep (see
+`CapGTA_dev/next_iteration/T1_1_reference_degradation/RESULTS_SUMMARY.md`):
+
+- Reference: neuron-downsampled CENGEN L4, binomially thinned per fitted
+  detectability surface (`total_preserve` rescale, asymmetric arm).
+- HVG: seurat_v3 on the degraded reference alone, `n_top_genes=2000`.
+- scVI: `batch_key='assay'`, `dispersion='gene-batch'`, `n_latent=30`,
+  `n_layers=2`, `max_epochs=400 early_stopping`.
+- SCANVI: `from_scvi_model`, reference cells labeled by `cell_type`, CapGTA
+  cells set to `Unknown`. Same training budget.
+- Neighbors + UMAP + Leiden multi-res (0.3, 0.6, 1.0, 1.5) on `X_scANVI`.
+- Terminal: `adata_gex_scanvi_asymmetric.h5ad` under `CapGTA_dev/results/worm6_final/`.
+
+The sweep that led to this configuration (variants: scVI, Harmony, SCANVI ×
+asymmetric / symmetric thinning; sysVI Phase B) plus planning docs and all
+intermediate results live in `CapGTA_dev/` and are untracked.
 
 ### HTML dashboard
 

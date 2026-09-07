@@ -91,7 +91,7 @@ Downstream pipelines (below) require a `real_cells.csv`, which has columns barco
 
 ### Gene expression preprocessing
 
-`CapGTA_gex_soupx_pipeline.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
+`bin/CapGTA_gex_preprocessing.sh` runs the full spliced-RNA GEX pipeline end-to-end (SLURM-chained via `afterok`):
 
 1. Spliced-read filter (CIGAR `N`) → featureCounts on real cells → per-cell integer count matrix.
 2. Scanpy preprocessing: QC, WBID→gene-symbol rename, per-gene scaling by `1 / (n_junctions * exonic_length_kb)` to correct for junction count and cDNA-length amplification bias, HVG, PCA, UMAP, Leiden clustering.
@@ -100,7 +100,7 @@ Downstream pipelines (below) require a `real_cells.csv`, which has columns barco
 5. Re-preprocess on the decontaminated counts (with cuticle-gene drop) to get final clusters.
 
 ```bash
-bash CapGTA_gex_soupx_pipeline.sh \
+bash bin/CapGTA_gex_preprocessing.sh \
     results/<sample>/real_cells.csv \
     /shared/biodata/reference/iGenomes/Caenorhabditis_elegans/Ensembl/WBcel235/Annotation/Genes/genes.gtf \
     results/<sample> \

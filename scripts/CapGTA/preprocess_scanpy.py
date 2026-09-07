@@ -6,28 +6,38 @@ Pipeline:
     rename var_names WBID → gene symbol (WBID kept in .var['wormbase_id'])
     [if --drop-cuticle: drop col-* + dpy-7/sqt-1/sqt-3/rol-6/bli-1/bli-2]
     calculate_qc_metrics
-    save raw integer counts to .layers['counts']   (unconditional; overwrites)
-    [scale .X columns by 1 / (n_junctions * exonic_length_kb) when the matching
-        --junction-csv / --gene-lengths-csv are provided; either factor omitted
-        when its CSV is not passed; single-exon (n_junctions = 0) genes → 0]
-    normalize_total → log1p
-    highly_variable_genes (n_top_genes, batch_key)
-    pca
-    neighbors
-    umap (min_dist, spread)
-    leiden (flavor='igraph', n_iterations=2, resolution)
+    save raw integer counts to .layers['counts']   (unconditional; never overwritten)
+    populate .var['n_junctions'], .var['exonic_length'], .var['detectability_k']
+        (when the corresponding CSVs are provided; diagnostics-only in 'none' mode)
+    apply --count-scaling arm to .X
+    write .obs[assay_key] = assay_value
+    normalize_total → log1p → HVG → PCA → neighbors → UMAP → Leiden
     write h5ad
 
-Junction + length correction is applied to .X only; .layers['counts'] always
-holds the raw integer counts as-loaded, which is what SoupX and other
-count-model tools expect. Both CSVs are keyed on gene_id (WBID), so reindexing
-uses .var['wormbase_id'] not var_names.
+Count-scaling arms (see docs/C3.3_count_scaling_review.md):
+    none         .X = raw ints                                     (arm A, default)
+    current      .X @ diag(1 / (n_junctions · exonic_length_kb))   (arm B, legacy)
+    median_rint  X * median(k)/k, then np.rint                     (arm C, tutorial)
+    median_rrint X * median(k)/k, then randomized rounding         (arm D)
+Where k_g = n_junctions · exonic_length / 1000. Genes with k_g == 0 collapse to 0
+in the scaling arms; in 'none' they are kept intact.
+
+Legacy compatibility: if --count-scaling is not passed and either --junction-csv
+or --gene-lengths-csv IS passed, arm defaults to 'current' so the existing SoupX
+pipeline (which passes both CSVs) continues to reproduce arm B without an
+orchestrator change.
+
+.layers['counts'] always holds the raw integer counts as-loaded, which is what
+SoupX and downstream count-model tools (scVI) expect.
 
 Usage:
     preprocess_scanpy.py <input.h5ad> <output.h5ad> --gtf <annotation.gtf> \
         [--drop-cuticle] \
         [--junction-csv <gene_junctions.csv>] \
         [--gene-lengths-csv <gene_lengths.csv>] \
+        [--count-scaling {none,current,median_rint,median_rrint}] \
+        [--seed 0] \
+        [--assay-key assay --assay-value capgta] \
         [--resolution 2] [--n-hvg 2000] [--batch-key sample] \
         [--min-dist 0.1] [--spread 5]
 """
@@ -63,23 +73,62 @@ def gtf_gid_to_symbol(gtf_path: Path) -> dict[str, str]:
     return m
 
 
-CUTICLE_PREFIXES = ('col-', 'cut-', 'idpa-')
+CUTICLE_PREFIXES = (
+    # cuticle-structural (collagens, cuticulins)
+    'col-', 'cut-', 'idpa-',
+    # molt-oscillator gene families (Meeuse 2020 Mol Syst Biol; ~24% of expressed
+    # genes oscillate with a ~7h period; cuticle collagens + regulators peak at
+    # phased offsets around each molt)
+    'bli-', 'ptr-', 'mlt-', 'noah-',
+    # all dpy-* — drop broadly since the molt oscillator drives them regardless
+    # of whether the specific family member is cuticle-structural or regulatory
+    'dpy-',
+)
 CUTICLE_SYMBOLS = {
-    # cuticle-collagen dpy genes (dpy-1, dpy-11, dpy-18+ have non-cuticle roles → excluded)
-    'dpy-2', 'dpy-3', 'dpy-4', 'dpy-5', 'dpy-6', 'dpy-7',
-    'dpy-8', 'dpy-9', 'dpy-10', 'dpy-13', 'dpy-14', 'dpy-17',
-    # squat / roller / blister cuticle families
+    # squat / roller cuticle families (bli-* now covered by prefix above)
     'sqt-1', 'sqt-2', 'sqt-3',
     'rol-1', 'rol-3', 'rol-4', 'rol-5', 'rol-6', 'rol-8',
-    'bli-1', 'bli-2', 'bli-3', 'bli-4', 'bli-5', 'bli-6',
+    # additional molt-oscillator markers cited in Meeuse 2020 and WormBook cuticle
+    'fbn-1', 'qua-1',
 }
 
 
 def cuticle_exclude_symbols(gid2sym: dict[str, str]) -> set[str]:
-    """Cuticle gene symbols: all col-/cut-/idpa- family members + curated cuticle set."""
+    """Genes excluded by the --drop-cuticle flag: col-/cut-/idpa- structural cuticle
+    families + molt-oscillator families (bli-, ptr-, mlt-, noah-, dpy-) + curated
+    sqt/rol/fbn-1/qua-1. See docs/C3.3_count_scaling_review.md §F.2 for the
+    Meeuse 2020 justification — the molt oscillator drives ~24% of the transcriptome
+    with a ~7h period and can look like lineage/subtype structure if left in."""
     syms = {s for s in gid2sym.values() if s.lower().startswith(CUTICLE_PREFIXES)}
     syms.update(CUTICLE_SYMBOLS)
     return syms
+
+
+def _apply_scaling(X, k, arm: str, rng: np.random.Generator):
+    """Return a new .X scaled per arm. X is CSR; k is the per-gene detectability
+    vector; arm ∈ {none, current, median_rint, median_rrint}."""
+    if arm == 'none':
+        return X
+    X = X if sp.issparse(X) else sp.csr_matrix(X)
+    has_k = k > 0
+    if arm == 'current':
+        scale = np.where(has_k, 1.0 / np.where(has_k, k, 1.0), 0.0)
+        return (X @ sp.diags(scale)).tocsr()
+    if arm in ('median_rint', 'median_rrint'):
+        k_med = float(np.median(k[has_k])) if has_k.any() else 1.0
+        scale = np.where(has_k, k_med / np.where(has_k, k, 1.0), 0.0)
+        Xs = (X @ sp.diags(scale)).tocsr()
+        data = Xs.data
+        if arm == 'median_rint':
+            data = np.rint(data)
+        else:
+            floor = np.floor(data)
+            frac = data - floor
+            data = floor + (rng.random(size=frac.shape) < frac).astype(floor.dtype)
+        Xs.data = data.astype(np.int64, copy=False)
+        Xs.eliminate_zeros()
+        return Xs
+    raise ValueError(f'unknown count-scaling arm: {arm}')
 
 
 def main() -> int:
@@ -91,9 +140,20 @@ def main() -> int:
     p.add_argument('--drop-cuticle', action='store_true',
                    help='drop col-* collagens plus dpy-7, sqt-1, sqt-3, rol-6, bli-1, bli-2')
     p.add_argument('--junction-csv', type=Path, default=None,
-                   help='gene_junctions.csv (columns: gene_id,n_junctions) for splice-count correction')
+                   help='gene_junctions.csv (columns: gene_id,n_junctions); always populates .var[n_junctions]')
     p.add_argument('--gene-lengths-csv', type=Path, default=None,
-                   help='gene_lengths.csv (columns: gene_id,exonic_length) for cDNA-length correction')
+                   help='gene_lengths.csv (columns: gene_id,exonic_length); always populates .var[exonic_length]')
+    p.add_argument('--count-scaling', choices=['none', 'current', 'median_rint', 'median_rrint'],
+                   default=None,
+                   help="how to scale .X: none (raw ints, default when no CSVs), current (legacy 1/(J·L)), "
+                        "median_rint (X*median(k)/k → rint), median_rrint (X*median(k)/k → randomized rounding). "
+                        "If unset and either CSV is passed, defaults to 'current' for SoupX-pipeline compatibility.")
+    p.add_argument('--seed', type=int, default=0,
+                   help='RNG seed for median_rrint randomized rounding (default 0)')
+    p.add_argument('--assay-key', default='assay',
+                   help='name of the .obs column written to identify this assay (default: assay)')
+    p.add_argument('--assay-value', default='capgta',
+                   help='value written to .obs[assay_key] for every cell (default: capgta)')
     p.add_argument('--resolution', type=float, default=2.0)
     p.add_argument('--n-hvg', type=int, default=2000)
     p.add_argument('--batch-key', default='sample')
@@ -106,6 +166,16 @@ def main() -> int:
         return 1
     if not args.gtf.is_file():
         print(f'Error: GTF not found: {args.gtf}', file=sys.stderr)
+        return 1
+
+    # Resolve count-scaling arm with legacy fallback.
+    has_csvs = args.junction_csv is not None or args.gene_lengths_csv is not None
+    if args.count_scaling is None:
+        arm = 'current' if has_csvs else 'none'
+    else:
+        arm = args.count_scaling
+    if arm != 'none' and not has_csvs:
+        print(f"Error: --count-scaling={arm} requires --junction-csv and --gene-lengths-csv", file=sys.stderr)
         return 1
 
     print(f'Loading {args.input_h5ad}')
@@ -139,49 +209,56 @@ def main() -> int:
 
     # Always save the loaded integer counts before any transformation.
     adata.layers['counts'] = adata.X.copy()
+    if adata.layers['counts'].dtype.kind not in 'iu':
+        print(f"Warning: input .X dtype is {adata.layers['counts'].dtype}, not integer; "
+              "SoupX / scVI assume raw integer counts in .layers['counts']", file=sys.stderr)
 
-    if args.junction_csv is not None or args.gene_lengths_csv is not None:
-        import pandas as pd
-        wbids = adata.var['wormbase_id']
-        n_genes = adata.n_vars
-        scale = np.ones(n_genes, dtype=float)
-        keep = np.ones(n_genes, dtype=bool)
-        parts = []
+    # --- Populate diagnostics into .var (always when CSVs provided) -----------
+    import pandas as pd
+    wbids = adata.var['wormbase_id']
+    have_junc = args.junction_csv is not None
+    have_len = args.gene_lengths_csv is not None
+    if have_junc:
+        if not args.junction_csv.is_file():
+            print(f'Error: junction CSV not found: {args.junction_csv}', file=sys.stderr)
+            return 1
+        junc = pd.read_csv(args.junction_csv).set_index('gene_id')
+        adata.var['n_junctions'] = junc['n_junctions'].reindex(wbids).fillna(0).to_numpy()
+    if have_len:
+        if not args.gene_lengths_csv.is_file():
+            print(f'Error: gene lengths CSV not found: {args.gene_lengths_csv}', file=sys.stderr)
+            return 1
+        lens = pd.read_csv(args.gene_lengths_csv).set_index('gene_id')
+        adata.var['exonic_length'] = lens['exonic_length'].reindex(wbids).fillna(0).to_numpy()
+    if have_junc and have_len:
+        adata.var['detectability_k'] = (
+            adata.var['n_junctions'].to_numpy() * adata.var['exonic_length'].to_numpy() / 1000.0
+        )
 
-        if args.junction_csv is not None:
-            if not args.junction_csv.is_file():
-                print(f'Error: junction CSV not found: {args.junction_csv}', file=sys.stderr)
-                return 1
-            junc = pd.read_csv(args.junction_csv).set_index('gene_id')
-            n_junc = junc['n_junctions'].reindex(wbids).fillna(0).to_numpy()
-            adata.var['n_junctions'] = n_junc
-            has_junc = n_junc > 0
-            scale = np.where(has_junc, scale / np.where(has_junc, n_junc, 1), 0.0)
-            keep &= has_junc
-            parts.append(f'{int(has_junc.sum())}/{n_genes} with >=1 junction')
+    # --- Apply count-scaling arm to .X ----------------------------------------
+    print(f'Count-scaling arm: {arm}')
+    if arm != 'none':
+        if 'detectability_k' not in adata.var.columns:
+            print("Error: --count-scaling != 'none' requires both --junction-csv and --gene-lengths-csv",
+                  file=sys.stderr)
+            return 1
+        rng = np.random.default_rng(args.seed)
+        adata.X = _apply_scaling(adata.X, adata.var['detectability_k'].to_numpy(), arm, rng)
+        n_has = int((adata.var['detectability_k'] > 0).sum())
+        print(f'  scaled with k = n_junctions · exonic_length_kb  '
+              f'({n_has}/{adata.n_vars} genes with k > 0)')
 
-        if args.gene_lengths_csv is not None:
-            if not args.gene_lengths_csv.is_file():
-                print(f'Error: gene lengths CSV not found: {args.gene_lengths_csv}', file=sys.stderr)
-                return 1
-            lens = pd.read_csv(args.gene_lengths_csv).set_index('gene_id')
-            exonic_bp = lens['exonic_length'].reindex(wbids).fillna(0).to_numpy()
-            adata.var['exonic_length'] = exonic_bp
-            has_len = exonic_bp > 0
-            length_kb = exonic_bp / 1000.0
-            scale = np.where(has_len, scale / np.where(has_len, length_kb, 1), 0.0)
-            keep &= has_len
-            parts.append(f'{int(has_len.sum())}/{n_genes} with exonic length')
+    # Defensive: raw ints preserved regardless of arm.
+    counts = adata.layers['counts']
+    counts_dtype = counts.dtype
+    if counts_dtype.kind not in 'iu':
+        print(f"Warning: .layers['counts'] dtype is {counts_dtype} after scaling; "
+              "downstream scVI expects integer counts", file=sys.stderr)
 
-        scale[~keep] = 0.0
-        X = adata.X if sp.issparse(adata.X) else sp.csr_matrix(adata.X)
-        adata.X = (X @ sp.diags(scale)).tocsr()
-        factor_names = []
-        if args.junction_csv is not None:
-            factor_names.append('n_junctions')
-        if args.gene_lengths_csv is not None:
-            factor_names.append('exonic_length_kb')
-        print(f'Scaled .X by 1 / ({" * ".join(factor_names)})  ({"; ".join(parts)})')
+    # --- Assay label ---------------------------------------------------------
+    adata.obs[args.assay_key] = args.assay_value
+    adata.obs[args.assay_key] = adata.obs[args.assay_key].astype('category')
+    print(f'Set .obs[{args.assay_key!r}] = {args.assay_value!r}')
 
     sc.pp.normalize_total(adata)
     sc.pp.log1p(adata)

@@ -14,7 +14,7 @@
 #   8. [job]    Preprocess post-SoupX → adata_gex_spliced_soupx_processed.h5ad (final).
 #
 # Usage:
-#   bash CapGTA_gex_soupx_pipeline.sh \
+#   bash bin/CapGTA_gex_preprocessing.sh \
 #       <real_cells.csv> \
 #       <annotation.gtf> \
 #       <output_dir> \
@@ -49,7 +49,7 @@ REAL_CELLS_CSV="${POS[0]}"
 GTF="${POS[1]}"
 OUTPUT_DIR="${POS[2]}"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="${REPO_ROOT}/scripts/CapGTA"
 
 for f in "${REAL_CELLS_CSV}" "${GTF}"; do
@@ -77,7 +77,7 @@ FINAL_H5AD="${OUTPUT_DIR}/adata_gex_spliced_soupx_processed.h5ad"
 EMPTIES_CSV="${EMPTIES_DIR}/empty_cells.csv"
 
 echo "=========================================="
-echo "GEX + SoupX pipeline"
+echo "CapGTA GEX preprocessing pipeline"
 echo "=========================================="
 echo "Real cells:     ${REAL_CELLS_CSV}"
 echo "GTF:            ${GTF}"
