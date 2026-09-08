@@ -211,9 +211,20 @@ under `CapGTA_dev/` (untracked).
 
 `notebooks/worm6_final_GEX.ipynb` is the end-to-end coembedding notebook. It
 loads the preprocessed CapGTA (arm B manual annotation h5ad) and the degraded
-CENGEN L4 reference (Taylor 2020, `taylor2020_degraded_seed0.h5ad` generated
-under `CapGTA_dev/next_iteration/T1_1_reference_degradation/`), and trains
-scVI → SCANVI on the concat.
+CENGEN L4 reference (Taylor 2020, `taylor2020_degraded_seed0.h5ad` produced by
+`scripts/CapGTA/reference_degradation.py`), and trains scVI → SCANVI on the
+concat.
+
+Regenerate the degraded reference with:
+```bash
+python3 scripts/CapGTA/reference_degradation.py \
+    --capgta      CapGTA_dev/results/worm6_final/manual_annotation_arms/B_current/adata_annotated.h5ad \
+    --reference   data/references/cengen_L4/taylor2020.h5ad \
+    --calibration CapGTA_dev/results/worm6_final/calibration_v2.h5ad \
+    --kg-source   CapGTA_dev/results/worm6_final/scaled_adatas/adata_splicedpolyat_soupx_scaled_none.h5ad \
+    --out         results/worm6_final/reference_degradation \
+    --n-seeds     5
+```
 
 Winning configuration from the T1.1 sweep (see
 `CapGTA_dev/next_iteration/T1_1_reference_degradation/RESULTS_SUMMARY.md`):
