@@ -106,17 +106,23 @@ def cuticle_exclude_symbols(gid2sym: dict[str, str]) -> set[str]:
 
 def _apply_scaling(X, k, arm: str, rng: np.random.Generator):
     """Return a new .X scaled per arm. X is CSR; k is the per-gene detectability
-    vector; arm ∈ {none, current, median_rint, median_rrint}."""
+    vector; arm ∈ {none, current, median_rint, median_rrint}.
+
+    Genes with k == 0 (single-exon genes with 0 junctions, or genes missing from
+    the junction CSV) are LEFT UNSCALED (scale = 1). Prior versions silently set
+    scale = 0, zeroing those columns and letting them propagate as noise through
+    HVG / PCA / Leiden. The caller reports the k == 0 count.
+    """
     if arm == 'none':
         return X
     X = X if sp.issparse(X) else sp.csr_matrix(X)
     has_k = k > 0
     if arm == 'current':
-        scale = np.where(has_k, 1.0 / np.where(has_k, k, 1.0), 0.0)
+        scale = np.where(has_k, 1.0 / np.where(has_k, k, 1.0), 1.0)
         return (X @ sp.diags(scale)).tocsr()
     if arm in ('median_rint', 'median_rrint'):
         k_med = float(np.median(k[has_k])) if has_k.any() else 1.0
-        scale = np.where(has_k, k_med / np.where(has_k, k, 1.0), 0.0)
+        scale = np.where(has_k, k_med / np.where(has_k, k, 1.0), 1.0)
         Xs = (X @ sp.diags(scale)).tocsr()
         data = Xs.data
         if arm == 'median_rint':
@@ -235,6 +241,16 @@ def main() -> int:
             adata.var['n_junctions'].to_numpy() * adata.var['exonic_length'].to_numpy() / 1000.0
         )
 
+    # --- Unscaled log-normalized layer (arm-independent, for marker analysis) -
+    # Downstream sc.tl.rank_genes_groups etc. can score against a length-unbiased
+    # representation via `use_raw=False, layer='logcounts_unscaled'`.
+    _tmp = sc.AnnData(X=adata.layers['counts'].copy())
+    sc.pp.normalize_total(_tmp)
+    sc.pp.log1p(_tmp)
+    adata.layers['logcounts_unscaled'] = _tmp.X
+    del _tmp
+    print(f'Built .layers["logcounts_unscaled"] from raw counts (arm-independent)')
+
     # --- Apply count-scaling arm to .X ----------------------------------------
     print(f'Count-scaling arm: {arm}')
     if arm != 'none':
@@ -242,11 +258,17 @@ def main() -> int:
             print("Error: --count-scaling != 'none' requires both --junction-csv and --gene-lengths-csv",
                   file=sys.stderr)
             return 1
+        k = adata.var['detectability_k'].to_numpy()
         rng = np.random.default_rng(args.seed)
-        adata.X = _apply_scaling(adata.X, adata.var['detectability_k'].to_numpy(), arm, rng)
-        n_has = int((adata.var['detectability_k'] > 0).sum())
+        adata.X = _apply_scaling(adata.X, k, arm, rng)
+        n_has = int((k > 0).sum())
+        n_zero = int((k == 0).sum())
         print(f'  scaled with k = n_junctions · exonic_length_kb  '
-              f'({n_has}/{adata.n_vars} genes with k > 0)')
+              f'({n_has}/{adata.n_vars} genes with k > 0; '
+              f'{n_zero} genes with k == 0 left unscaled — see fix note in _apply_scaling)')
+        if n_zero > 0:
+            zero_syms = adata.var_names[k == 0]
+            print(f'  first 10 k==0 genes: {list(zero_syms[:10])}')
 
     # Defensive: raw ints preserved regardless of arm.
     counts = adata.layers['counts']

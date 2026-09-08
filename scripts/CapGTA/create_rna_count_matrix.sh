@@ -61,12 +61,20 @@ mapfile -t BAM_PATHS < "${BAM_LIST}"
 # featureCounts args:
 #   -a GTF, -o output
 #   -T 16 threads
-#   -t exon, -g gene_id: count reads overlapping exons, aggregate by gene
-#   --fracOverlap 0.5:  require 50% of read length to overlap exon
-#   --primary:          only primary alignments
-#   -p:                 paired-end input (BAMs are PE from spc-align)
-#   -B:                 count only pairs where both ends mapped
-#   -C:                 exclude chimeric pairs (different chromosomes)
+#   -t exon, -g gene_id:    count reads overlapping exons, aggregate by gene
+#   --fracOverlap 0.5:      require 50% of read length to overlap exon
+#   --primary:              only primary alignments
+#   -p, --countReadPairs:   paired-end input, count fragments not reads
+#                           (Subread 2.0.2+: -p alone declares PE but still counts
+#                           each mate individually; --countReadPairs is required
+#                           to count fragments. Without it -B and -C are silently
+#                           ignored and short/junction-dense genes are inflated
+#                           when both mates cross a junction. Fixed 2026-09-08.)
+#   -B:                     count only pairs where both ends mapped
+#   -C:                     exclude chimeric pairs (different chromosomes)
+#   --ignoreDup:            skip reads with the SAM duplicate flag (MarkDuplicates
+#                           runs upstream in spc-align; DNA-side variant calling
+#                           already skips these, this makes RNA counts consistent).
 # Note: no -M (multi-mapper), because STAR was run with --outFilterMultimapNmax 1 upstream.
 featureCounts \
     -a "${GTF}" \
@@ -76,9 +84,10 @@ featureCounts \
     -g gene_id \
     --fracOverlap 0.5 \
     --primary \
-    -p \
+    -p --countReadPairs \
     -B \
     -C \
+    --ignoreDup \
     "${BAM_PATHS[@]}"
 
 echo ""
