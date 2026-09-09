@@ -84,3 +84,6 @@ notebooks/*_pilot.ipynb
 prompt_drafting.md
 notebooks/worm_CapGTA_unsync_pilot_debranching_readcounts.ipynb
 notebooks/testing.ipynb
+
+# R default device byproduct
+Rplots.pdf

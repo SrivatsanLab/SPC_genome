@@ -13,6 +13,7 @@ scripts <- c(
   "plot_mutations_bulk_WGA.R",
   "plot_clone_abundance_and_mutation_types.R",
   "mutation_spectra.R",
+  "K562_mut_accumulation.R",
   "analyse_flowdata.R",
   "anneufinder_plot.R",
   "draw_trees.R"
