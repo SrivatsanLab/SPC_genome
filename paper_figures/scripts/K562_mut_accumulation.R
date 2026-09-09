@@ -45,6 +45,8 @@ spectrum_by_construct <-
   group_by(construct) %>%
   summarise(across(everything(), sum), .groups = "drop")
 
+pooled_spectra <- list()
+
 for (this_construct in spectrum_by_construct$construct) {
   spec <-
     spectrum_by_construct %>%
@@ -66,6 +68,8 @@ for (this_construct in spectrum_by_construct$construct) {
 
   write.csv(spec, file.path(output_dir, paste0("spectrum_", this_construct, ".csv")),
             row.names = FALSE)
+
+  pooled_spectra[[this_construct]] <- spec
 }
 
 
@@ -118,5 +122,33 @@ ggsave(file.path(output_dir, "spectrum_background_density.pdf"),
 
 write.csv(background, file.path(output_dir, "spectrum_background.csv"),
           row.names = FALSE)
+
+
+# Shared-scale densities --------------------------------------------------
+# Background, AAVS and PolE densities as separate panels but on one common
+# y axis, so the SBS10a T[C>A]T peak reads against the baseline spectra
+# rather than against a per-panel rescaling.
+
+shared_scale_spectra <- list(
+  background = background,
+  AAVS = pooled_spectra[["AAVS"]],
+  PolE = pooled_spectra[["PolE"]]
+)
+
+# common limit with a little headroom above the tallest bar in any panel
+density_limit <- max(vapply(shared_scale_spectra,
+                            function(x) max(x$density), numeric(1))) * 1.05
+
+for (this_spectrum in names(shared_scale_spectra)) {
+  # add_context_axis() sets the shared y limit via coord_cartesian, so the
+  # annotation drawn below y = 0 is not clipped away
+  add_context_axis(plot_spectra(shared_scale_spectra[[this_spectrum]]),
+                   ymax = density_limit)
+  ggsave(file.path(output_dir,
+                   paste0("spectrum_", this_spectrum, "_density_shared_scale.pdf")),
+         height = 2.5, width = 8)
+}
+
+cat("Shared density y limit:", density_limit, "\n")
 
 cat("\nWrote spectra to:", output_dir, "\n")

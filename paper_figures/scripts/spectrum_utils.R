@@ -104,3 +104,50 @@ plot_spectra <- function(x, yvar = "density", outline_width = 0.25) {
           axis.text = element_text(size = 10),
           axis.text.x = element_text(angle = 90, size = 6, hjust = 0, vjust = 0.15))
 }
+
+# Two-tier trinucleotide axis annotation, as an alternative to the 96 rotated
+# x labels. The COSMIC order is 6 substitution blocks of 16, and within each
+# block the 5' base cycles A/A/A/A C/C/C/C G/G/G/G T/T/T/T while the 3' base
+# cycles A/C/G/T. So the 3' base gets one upright letter per bar, and each run
+# of four bars sharing a 5'+ref prefix gets a bar with that prefix under it.
+context_axis_data <- function() {
+  ctx <- data.frame(
+    x = seq_along(cosmic_order),
+    prefix = paste0(substr(cosmic_order, 1, 1), substr(cosmic_order, 3, 3)),
+    post = substr(cosmic_order, 7, 7),
+    stringsAsFactors = FALSE
+  )
+  ctx$group <- (ctx$x - 1) %/% 4 + 1
+  ctx
+}
+
+# ymax must be the panel's upper y limit: the annotation is drawn at negative
+# y and revealed with coord_cartesian(clip = "off"), so the offsets are
+# expressed as fractions of it.
+add_context_axis <- function(p, ymax,
+                             post_size = 2.1, prefix_size = 2.5,
+                             bottom_margin = 30) {
+  ctx <- context_axis_data()
+  grp <- ctx %>%
+    group_by(group, prefix) %>%
+    summarise(xmin = min(x) - 0.45, xmax = max(x) + 0.45,
+              xmid = mean(x), .groups = "drop")
+
+  p +
+    geom_text(data = ctx,
+              aes(x = x, y = -0.06 * ymax, label = post),
+              size = post_size, vjust = 1, family = "mono",
+              inherit.aes = FALSE) +
+    geom_segment(data = grp,
+                 aes(x = xmin, xend = xmax,
+                     y = -0.17 * ymax, yend = -0.17 * ymax),
+                 linewidth = 0.4, inherit.aes = FALSE) +
+    geom_text(data = grp,
+              aes(x = xmid, y = -0.20 * ymax, label = prefix),
+              size = prefix_size, vjust = 1, family = "mono",
+              inherit.aes = FALSE) +
+    coord_cartesian(ylim = c(0, ymax), clip = "off") +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          plot.margin = margin(t = 5.5, r = 5.5, b = bottom_margin, l = 5.5))
+}
