@@ -75,6 +75,12 @@ ggsave(file.path(output_dir, "accumulated_SBS10a.svg"),
 # De novo spectra ---------------------------------------------------------
 # Per-sample 96-context counts, pooled by construct (AAVS = WT, PolE = P286R).
 
+# add_context_axis() draws its two label bands below y = 0, sized as a fraction
+# of the panel height, so a taller panel needs a proportionally deeper bottom
+# margin to avoid clipping them. These spectra are 4in tall against the 2.5in
+# of the shared-scale panels, hence the larger value.
+tall_panel_margin <- 72
+
 spectrum_wide <- read.csv(file.path(data_dir, "spectrum.csv"),
                           check.names = FALSE, row.names = 1)
 
@@ -98,12 +104,18 @@ for (this_construct in spectrum_by_construct$construct) {
     annotate_spectrum()
 
   # counts, in thousands
-  plot_spectra(spec, yvar = "value") +
-    scale_y_continuous(labels = function(y) y / 1e3)
+  add_context_axis(
+    plot_spectra(spec, yvar = "value") +
+      scale_y_continuous(labels = function(y) y / 1e3),
+    ymax = max(spec$value) * 1.05,
+    bottom_margin = tall_panel_margin
+  )
   ggsave(file.path(output_dir, paste0("spectrum_", this_construct, ".svg")),
          height = 4, width = 12)
 
-  plot_spectra(spec)
+  add_context_axis(plot_spectra(spec),
+                   ymax = max(spec$density) * 1.05,
+                   bottom_margin = tall_panel_margin)
   ggsave(file.path(output_dir, paste0("spectrum_", this_construct, "_density.svg")),
          height = 4, width = 12)
 
@@ -152,12 +164,18 @@ background <-
   annotate_spectrum()
 
 # counts, in millions
-plot_spectra(background, yvar = "value") +
-  scale_y_continuous(labels = function(y) y / 1e6)
+add_context_axis(
+  plot_spectra(background, yvar = "value") +
+    scale_y_continuous(labels = function(y) y / 1e6),
+  ymax = max(background$value) * 1.05,
+  bottom_margin = tall_panel_margin
+)
 ggsave(file.path(output_dir, "spectrum_background.svg"),
        height = 4, width = 12)
 
-plot_spectra(background)
+add_context_axis(plot_spectra(background),
+                 ymax = max(background$density) * 1.05,
+                 bottom_margin = tall_panel_margin)
 ggsave(file.path(output_dir, "spectrum_background_density.svg"),
        height = 4, width = 12)
 

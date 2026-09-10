@@ -110,7 +110,8 @@ plot_spectra <- function(x, yvar = "density", outline_width = 0.25) {
 # block the 5' base cycles A/A/A/A C/C/C/C G/G/G/G T/T/T/T while the 3' base
 # cycles A/C/G/T. So directly under the axis each bar gets its 3' base as a
 # single letter, and along the bottom each run of four bars sharing a 5'+ref
-# prefix gets that prefix in its own box. All labels run vertically.
+# prefix gets that prefix once, centred under the run. All labels run
+# vertically.
 context_axis_data <- function() {
   ctx <- data.frame(
     x = seq_along(cosmic_order),
@@ -127,18 +128,16 @@ context_axis_data <- function() {
 # expressed as fractions of it.
 add_context_axis <- function(p, ymax,
                              post_size = 2.6, prefix_size = 2.5,
-                             bottom_margin = 56) {
+                             bottom_margin = 44) {
   ctx <- context_axis_data()
   grp <- ctx %>%
     group_by(group, prefix) %>%
-    summarise(xmin = min(x) - 0.5, xmax = max(x) + 0.5,
-              xmid = mean(x), .groups = "drop")
+    summarise(xmid = mean(x), .groups = "drop")
 
   # two bands under the axis, as fractions of ymax: the 3' base sits directly
-  # below each bar, the boxed 5'+ref prefix along the bottom
-  post_y  <- -0.06 * ymax
-  box_top <- -0.19 * ymax
-  box_bot <- -0.42 * ymax
+  # below each bar, the 5'+ref prefix along the bottom
+  post_y   <- -0.06 * ymax
+  prefix_y <- -0.21 * ymax
 
   p +
     # angle 90 with hjust 1 anchors the end of the string at the point, so the
@@ -147,13 +146,9 @@ add_context_axis <- function(p, ymax,
               aes(x = x, y = post_y, label = post),
               size = post_size, angle = 90, hjust = 1, vjust = 0.5,
               family = "mono", inherit.aes = FALSE) +
-    geom_rect(data = grp,
-              aes(xmin = xmin, xmax = xmax, ymin = box_bot, ymax = box_top),
-              fill = NA, color = "black", linewidth = 0.3,
-              inherit.aes = FALSE) +
     geom_text(data = grp,
-              aes(x = xmid, y = (box_top + box_bot) / 2, label = prefix),
-              size = prefix_size, angle = 90, hjust = 0.5, vjust = 0.5,
+              aes(x = xmid, y = prefix_y, label = prefix),
+              size = prefix_size, angle = 90, hjust = 1, vjust = 0.5,
               family = "mono", inherit.aes = FALSE) +
     coord_cartesian(ylim = c(0, ymax), clip = "off") +
     theme(axis.text.x = element_blank(),
