@@ -67,7 +67,7 @@ ggplot(time_series, aes(x = weeks, y = SBS10a / 1e3,
   ) +
   xlab("Time (weeks)") +
   ylab("SBS10a (thousands)")
-ggsave(file.path(output_dir, "accumulated_SBS10a.pdf"),
+ggsave(file.path(output_dir, "accumulated_SBS10a.svg"),
        bg = "transparent",
        height = 3.25, width = 3.5)
 
@@ -100,11 +100,11 @@ for (this_construct in spectrum_by_construct$construct) {
   # counts, in thousands
   plot_spectra(spec, yvar = "value") +
     scale_y_continuous(labels = function(y) y / 1e3)
-  ggsave(file.path(output_dir, paste0("spectrum_", this_construct, ".pdf")),
+  ggsave(file.path(output_dir, paste0("spectrum_", this_construct, ".svg")),
          height = 4, width = 12)
 
   plot_spectra(spec)
-  ggsave(file.path(output_dir, paste0("spectrum_", this_construct, "_density.pdf")),
+  ggsave(file.path(output_dir, paste0("spectrum_", this_construct, "_density.svg")),
          height = 4, width = 12)
 
   write.csv(spec, file.path(output_dir, paste0("spectrum_", this_construct, ".csv")),
@@ -133,7 +133,7 @@ plot_spectra(spectrum_per_sample, outline_width = 0) +
         strip.text = element_text(size = 8),
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank())
-ggsave(file.path(output_dir, "spectrum_per_sample.pdf"),
+ggsave(file.path(output_dir, "spectrum_per_sample.svg"),
        height = 10, width = 12)
 
 write.csv(spectrum_per_sample,
@@ -154,11 +154,11 @@ background <-
 # counts, in millions
 plot_spectra(background, yvar = "value") +
   scale_y_continuous(labels = function(y) y / 1e6)
-ggsave(file.path(output_dir, "spectrum_background.pdf"),
+ggsave(file.path(output_dir, "spectrum_background.svg"),
        height = 4, width = 12)
 
 plot_spectra(background)
-ggsave(file.path(output_dir, "spectrum_background_density.pdf"),
+ggsave(file.path(output_dir, "spectrum_background_density.svg"),
        height = 4, width = 12)
 
 write.csv(background, file.path(output_dir, "spectrum_background.csv"),
@@ -186,7 +186,7 @@ for (this_spectrum in names(shared_scale_spectra)) {
   add_context_axis(plot_spectra(shared_scale_spectra[[this_spectrum]]),
                    ymax = density_limit)
   ggsave(file.path(output_dir,
-                   paste0("spectrum_", this_spectrum, "_density_shared_scale.pdf")),
+                   paste0("spectrum_", this_spectrum, "_density_shared_scale.svg")),
          height = 2.5, width = 8)
 }
 
