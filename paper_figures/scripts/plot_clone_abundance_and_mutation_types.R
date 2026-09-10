@@ -72,9 +72,9 @@ snps_per_Cell %>%
   scale_x_discrete(labels = c("P0","P1","P2","P3","P4","P5")) +
   ylab("Variants") +
   theme(legend.position = "none")
-ggsave(filename = file.path(output_dir, "variants_per_cell.png"),
-       dpi= 600,bg = "transparent",
-       height = 2.5, width = 2.5)
+ggsave(filename = file.path(output_dir, "variants_per_cell.pdf"),
+       bg = "transparent",
+       height = 3.5, width = 2.25)
   
 
 single_cell_clones_data = read.csv("snp_counts.csv") %>%
@@ -98,9 +98,9 @@ single_cell_clones_data %>%
   ylab("Variants") +
   theme(legend.position = "none")
 
-ggsave(filename = file.path(output_dir, "SBS_per_cell_violin.png"),
-       dpi= 600,bg = "transparent",
-       height = 2.5, width = 2.5)
+ggsave(filename = file.path(output_dir, "SBS_per_cell_violin.pdf"),
+       bg = "transparent",
+       height = 3.5, width = 2.25)
 
 single_cell_clones_data %>%
   select(Cell, SNP_count_de_novo) %>%
