@@ -23,6 +23,9 @@ to `<repo>/results/<experiment>/`; the R script here consumes those tables and
 renders the panels in the house style. Filtering thresholds are documented in
 the header of each script.
 
+- `K562_consensus_tree.R` <- `notebooks/K562_tree.ipynb` cell 97
+  (`grouped_bootstrap_consensus.newick`). Re-draws the baltic/matplotlib tree
+  with ggtree in the `draw_trees.R` style.
 - `K562_mut_accumulation.R` <- `notebooks/K562_mut_accumulation.ipynb`
   (`spectrum.csv`, `spectrum_background.csv`). Renders the de novo spectra
   pooled by construct (AAVS/PolE), the per-sample facet grid, and the

@@ -16,7 +16,8 @@ scripts <- c(
   "K562_mut_accumulation.R",
   "analyse_flowdata.R",
   "anneufinder_plot.R",
-  "draw_trees.R"
+  "draw_trees.R",
+  "K562_consensus_tree.R"
 )
 
 results <- lapply(scripts, function(s) {

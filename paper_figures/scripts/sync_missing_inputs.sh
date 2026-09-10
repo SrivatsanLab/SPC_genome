@@ -48,3 +48,24 @@ else
   echo "Run notebooks/K562_mut_accumulation.ipynb first, or set" \
        "K562_MUT_ACCUM_RESULTS to a checkout that has results/K562_mut_accumulation"
 fi
+
+# K562 consensus trees: newick written by notebooks/K562_tree.ipynb into
+# <repo>/results/K562_tree/trees. Point K562_TREE_RESULTS at another checkout
+# to pull them from there.
+tree_src="${K562_TREE_RESULTS:-$repo_root/results/K562_tree/trees}"
+tree_dst="$repo_root/paper_figures/data/K562_tree"
+
+if [[ -d "$tree_src" ]]; then
+  mkdir -p "$tree_dst"
+  for f in grouped_bootstrap_consensus.newick grouped_bootstrap_consensus_upgma.newick; do
+    if [[ -f "$tree_src/$f" ]]; then
+      cp "$tree_src/$f" "$tree_dst/$f"
+      echo "Copied K562_tree/$f"
+    else
+      echo "Missing in notebook results: K562_tree/trees/$f"
+    fi
+  done
+else
+  echo "Run notebooks/K562_tree.ipynb first, or set K562_TREE_RESULTS to a" \
+       "checkout that has results/K562_tree/trees"
+fi
