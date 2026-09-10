@@ -48,7 +48,7 @@ plot_consensus_tree <- function(tree) {
     geom_point(
       data = tips,
       aes(x = x, y = y, fill = label),
-      shape = 21, size = 6, stroke = 1.2, color = "black"
+      shape = 21, size = 8, stroke = 1.2, color = "black"
     ) +
     scale_fill_manual(values = pop_colors) +
     # Vertical dendrogram: divergence runs down the page, tips along the
@@ -82,9 +82,11 @@ plot_consensus_tree <- function(tree) {
 consensus <- read_consensus(file.path(data_dir, "grouped_bootstrap_consensus.newick"))
 
 plot_consensus_tree(consensus)
+# 3in wide rather than narrower: seven tips share the width, so anything
+# tighter overlaps the size 8 points
 ggsave(file.path(output_dir, "grouped_consensus_tree.pdf"),
        bg = "transparent",
-       height = 5, width = 5)
+       height = 3, width = 3)
 
 # UPGMA version of the same consensus, for comparison
 upgma_path <- file.path(data_dir, "grouped_bootstrap_consensus_upgma.newick")
@@ -92,7 +94,7 @@ if (file.exists(upgma_path)) {
   plot_consensus_tree(read_consensus(upgma_path))
   ggsave(file.path(output_dir, "grouped_consensus_tree_upgma.pdf"),
          bg = "transparent",
-         height = 5, width = 5)
+         height = 3, width = 3)
 }
 
 # Bootstrap support sits in the internal node labels; report it rather than

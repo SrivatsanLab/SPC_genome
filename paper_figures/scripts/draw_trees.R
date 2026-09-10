@@ -99,9 +99,9 @@ custom_plot <- ggtree(custom_tree, layout = "roundrect", size = 1, color = "whit
   ) +
   theme_void()
 
-# 5 x 5 to match K562_consensus_tree.R, so the schematic and the data-derived
+# 3 x 3 to match K562_consensus_tree.R, so the schematic and the data-derived
 # consensus tree can be placed side by side at the same scale
-save_tree_plot(custom_plot, file.path(output_dir, "our_tree.pdf"), height = 5, width = 5)
+save_tree_plot(custom_plot, file.path(output_dir, "our_tree.pdf"), height = 3, width = 3)
 
 
 
