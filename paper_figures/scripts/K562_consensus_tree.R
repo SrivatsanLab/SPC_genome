@@ -51,15 +51,21 @@ plot_consensus_tree <- function(tree) {
       shape = 21, size = 6, stroke = 1.2, color = "black"
     ) +
     scale_fill_manual(values = pop_colors) +
-    scale_x_continuous(breaks = grid_breaks) +
-    # ggtree puts the first tip at the bottom; reverse so WT is at the top as
-    # in the notebook figure
-    scale_y_reverse() +
-    coord_cartesian(xlim = c(-0.02, 0.62)) +
+    # Vertical dendrogram: divergence runs down the page, tips along the
+    # bottom. This is what layout_dendrogram() does, spelled out so the depth
+    # breaks can be set - calling it as well would apply scale_x_reverse twice
+    # and detach the tip points from the branches.
+    scale_x_reverse(breaks = grid_breaks) +
+    coord_flip() +
     theme_tree2() +
     theme(
       legend.position = "none",
-      axis.text.x = element_text(size = 16, color = "black"),
+      # depth axis, vertical after the flip
+      axis.text.y = element_text(size = 16, color = "black"),
+      axis.line.y = element_blank(),
+      # tip-index axis, meaningless here
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
       axis.line.x = element_blank()
     )
 
@@ -78,7 +84,7 @@ consensus <- read_consensus(file.path(data_dir, "grouped_bootstrap_consensus.new
 plot_consensus_tree(consensus)
 ggsave(file.path(output_dir, "grouped_consensus_tree.pdf"),
        bg = "transparent",
-       height = 5, width = 6)
+       height = 5, width = 5)
 
 # UPGMA version of the same consensus, for comparison
 upgma_path <- file.path(data_dir, "grouped_bootstrap_consensus_upgma.newick")
@@ -86,7 +92,7 @@ if (file.exists(upgma_path)) {
   plot_consensus_tree(read_consensus(upgma_path))
   ggsave(file.path(output_dir, "grouped_consensus_tree_upgma.pdf"),
          bg = "transparent",
-         height = 5, width = 6)
+         height = 5, width = 5)
 }
 
 # Bootstrap support sits in the internal node labels; report it rather than
