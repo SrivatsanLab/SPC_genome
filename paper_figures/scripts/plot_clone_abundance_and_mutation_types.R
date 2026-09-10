@@ -44,12 +44,21 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 snps_per_Cell <- read.csv("snp_counts.csv") %>%
   mutate(AD_2 = SNP_count_de_novo)
 
+# same P0-P5 palette as the population_cell_count panel above. Names are bound
+# to the sorted pop levels, so a mismatch fails loudly instead of mis-colouring.
+pop_levels <- sort(unique(as.character(snps_per_Cell$pop)))
+stopifnot(length(pop_levels) == 6)
+pop_palette <- setNames(
+  c("#260091", "#1e90ff", "#ffdb58", "#ff9d71", "#ff1b5e", "#e3e6e6"),
+  pop_levels
+)
+
 snps_per_Cell %>%
   dplyr::select(-X) %>%
   tidyr::pivot_longer(-pop) %>%
   filter(name == "AD_2") %>%
   # ascending order so the vertical panel runs P0 (left) -> P5 (right)
-  mutate(pop = factor(pop, levels = sort(unique(as.character(pop))))) %>%
+  mutate(pop = factor(pop, levels = pop_levels)) %>%
   ggplot + 
   geom_boxplot(aes(x = pop,
                    y = value,
@@ -57,7 +66,7 @@ snps_per_Cell %>%
                outlier.stroke = 0,
                outlier.size = 1) +
   theme_classic() +
-  scale_fill_manual(values = c("#a6d8a5","#f9dda7","#e3a9a6","#deaacd","#c2bbd9","#a8c7e6")) +
+  scale_fill_manual(values = pop_palette) +
   scale_y_log10() +
   xlab("Population") +
   scale_x_discrete(labels = c("P0","P1","P2","P3","P4","P5")) +
@@ -71,17 +80,17 @@ ggsave(filename = file.path(output_dir, "variants_per_cell.png"),
 single_cell_clones_data = read.csv("snp_counts.csv") %>%
   dplyr::rename(Cell = X)
 
-# SBS per cell as a violin, styled to match the boxplot above: same pastel
-# fills, ascending P0 -> P5, theme_classic, log10 y.
+# SBS per cell as a violin, styled to match the boxplot above: same fills,
+# ascending P0 -> P5, theme_classic, log10 y.
 single_cell_clones_data %>%
-  mutate(pop = factor(pop, levels = sort(unique(as.character(pop))))) %>%
+  mutate(pop = factor(pop, levels = pop_levels)) %>%
   ggplot() +
   geom_violin(aes(x = pop,
                   y = SNP_count_de_novo,
                   fill = pop),
               color = "black",
               linewidth = 0.25) +
-  scale_fill_manual(values = c("#a6d8a5","#f9dda7","#e3a9a6","#deaacd","#c2bbd9","#a8c7e6")) +
+  scale_fill_manual(values = pop_palette) +
   theme_classic() +
   scale_y_log10() +
   scale_x_discrete(labels = c("P0","P1","P2","P3","P4","P5")) +
