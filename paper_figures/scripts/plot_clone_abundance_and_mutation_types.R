@@ -46,8 +46,10 @@ snps_per_Cell <- read.csv("snp_counts.csv") %>%
 
 snps_per_Cell %>%
   dplyr::select(-X) %>%
-  pivot_longer(-pop) %>%
+  tidyr::pivot_longer(-pop) %>%
   filter(name == "AD_2") %>%
+  # ascending order so the vertical panel runs P0 (left) -> P5 (right)
+  mutate(pop = factor(pop, levels = sort(unique(as.character(pop))))) %>%
   ggplot + 
   geom_boxplot(aes(x = pop,
                    y = value,
@@ -60,65 +62,42 @@ snps_per_Cell %>%
   xlab("Population") +
   scale_x_discrete(labels = c("P0","P1","P2","P3","P4","P5")) +
   ylab("Variants") +
-  coord_flip() +
   theme(legend.position = "none")
-ggsave(filename = paste(output_dir,"mutations_per_population.png",sep = ""),
+ggsave(filename = file.path(output_dir, "variants_per_cell.png"),
        dpi= 600,bg = "transparent",
-       height = 2.5, width = 1.75)
+       height = 2.5, width = 2.5)
   
 
-single_cell_clones_data= read.csv("snp_counts.csv")
+single_cell_clones_data = read.csv("snp_counts.csv") %>%
+  dplyr::rename(Cell = X)
 
-single_cell_clones =
-  single_cell_clones_data %>%
-  mutate(shared_SNPs =  SNP_count_de_novo - SNP_count_de_novo_singletons) %>%
-  dplyr::select(-SNP_count_de_novo)
-  
-single_cell_clones = 
-single_cell_clones %>%
-  dplyr::rename(Cell = X) %>% 
-  dplyr::select(-tot_observed_sites,-SNP_count) %>%
-  tidyr::pivot_longer(-c(Cell,pop),names_to = "mutation")
-
-single_cell_clones$mutation <- 
-  factor(single_cell_clones$mutation, 
-         levels = c("germline_count", "mito_snps", "SNP_count_de_novo_singletons","shared_SNPs"))
-
-pop_levels = rev(paste0("P_", 0:5))
-
-single_cell_clones %>%
-  mutate(pop = factor(pop, levels = pop_levels)) %>%
-ggplot() +
-  geom_violin(aes(x = 1,
-                   y = value,
-                   fill= pop),
+# SBS per cell as a violin, styled to match the boxplot above: same pastel
+# fills, ascending P0 -> P5, theme_classic, log10 y.
+single_cell_clones_data %>%
+  mutate(pop = factor(pop, levels = sort(unique(as.character(pop))))) %>%
+  ggplot() +
+  geom_violin(aes(x = pop,
+                  y = SNP_count_de_novo,
+                  fill = pop),
               color = "black",
-              size = 0.25) +
-  scale_fill_manual(values = c("P_0" = "#260091", "P_1" = "#1e90ff",
-                               "P_2" = "#ffdb58", "P_3" = "#ff9d71",
-                               "P_4" = "#ff1b5e", "P_5" = "#e3e6e6")) +
-  facet_wrap(~mutation,scales = "free_y", nrow = 1)+
+              linewidth = 0.25) +
+  scale_fill_manual(values = c("#a6d8a5","#f9dda7","#e3a9a6","#deaacd","#c2bbd9","#a8c7e6")) +
   theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        panel.grid.major.y = element_line(linetype = "dashed"),
-        strip.text = element_blank(),  
-        axis.title = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.line = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_text(color = "black", size = 6))
+  scale_y_log10() +
+  scale_x_discrete(labels = c("P0","P1","P2","P3","P4","P5")) +
+  xlab("Population") +
+  ylab("Variants") +
+  theme(legend.position = "none")
 
-ggsave(filename = paste(output_dir,"mutations_per_population.png",sep = ""),
+ggsave(filename = file.path(output_dir, "SBS_per_cell_violin.png"),
        dpi= 600,bg = "transparent",
-       height = 2, width = 4)
+       height = 2.5, width = 2.5)
 
-single_cell_clones_data %>% 
-  rename(Cell = X)%>%
+single_cell_clones_data %>%
   select(Cell, SNP_count_de_novo) %>%
   summarise(mean_sbs = mean(SNP_count_de_novo),
             sd_sbs = sqrt(var(SNP_count_de_novo)))
 
 
 single_cell_clones_data %>%
-  pull(X) %>% length()
+  pull(Cell) %>% length()
