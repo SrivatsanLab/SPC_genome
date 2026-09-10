@@ -82,9 +82,10 @@ plot_consensus_tree <- function(tree) {
 consensus <- read_consensus(file.path(data_dir, "grouped_bootstrap_consensus.newick"))
 
 plot_consensus_tree(consensus)
-# 3in wide rather than narrower: seven tips share the width, so anything
-# tighter overlaps the size 8 points
-ggsave(file.path(output_dir, "grouped_consensus_tree.pdf"),
+# SVG so the figure can be rescaled freely downstream. 3in wide rather than
+# narrower: seven tips share the width, so anything tighter overlaps the
+# size 8 points.
+ggsave(file.path(output_dir, "grouped_consensus_tree.svg"),
        bg = "transparent",
        height = 3, width = 3)
 
@@ -92,7 +93,7 @@ ggsave(file.path(output_dir, "grouped_consensus_tree.pdf"),
 upgma_path <- file.path(data_dir, "grouped_bootstrap_consensus_upgma.newick")
 if (file.exists(upgma_path)) {
   plot_consensus_tree(read_consensus(upgma_path))
-  ggsave(file.path(output_dir, "grouped_consensus_tree_upgma.pdf"),
+  ggsave(file.path(output_dir, "grouped_consensus_tree_upgma.svg"),
          bg = "transparent",
          height = 3, width = 3)
 }
