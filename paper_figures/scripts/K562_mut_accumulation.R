@@ -51,7 +51,10 @@ time_series <-
 
 ggplot(time_series, aes(x = weeks, y = SBS10a / 1e3,
                         color = genotype, fill = genotype)) +
-  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.2, linewidth = 1) +
+  # se = FALSE: the default OLS band treats all 17 points as independent when
+  # they come from 6 lineages sampled over passages, so it is the wrong
+  # interval for this design. The notebook drops it in cell 55 too.
+  geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 1) +
   geom_point(size = 3, shape = 21, color = "black", stroke = 0.5) +
   scale_color_manual(values = genotype_colors) +
   scale_fill_manual(values = genotype_colors) +
