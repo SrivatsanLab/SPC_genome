@@ -36,7 +36,7 @@ k562_dst="$repo_root/paper_figures/data/K562_mut_accumulation"
 
 if [[ -d "$k562_src" ]]; then
   mkdir -p "$k562_dst"
-  for f in spectrum.csv spectrum_background.csv; do
+  for f in mutation_accumulation.csv spectrum.csv spectrum_background.csv; do
     if [[ -f "$k562_src/$f" ]]; then
       cp "$k562_src/$f" "$k562_dst/$f"
       echo "Copied K562_mut_accumulation/$f"

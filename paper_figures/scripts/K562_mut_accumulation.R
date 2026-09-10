@@ -1,4 +1,5 @@
-# K562 Pol-epsilon (P286R) mutation accumulation: 96-context mutation spectra.
+# K562 Pol-epsilon (P286R) mutation accumulation: SBS10a accumulation over
+# passages, and the 96-context mutation spectra.
 #
 # Ported from notebooks/K562_mut_accumulation.ipynb (D. Mullane). The variant
 # filtering lives upstream in that notebook (cellspec / anndata); this script
@@ -15,7 +16,8 @@
 #   7. per sample: VAF > 0.15 at target_dp = 100    -- "high_vaf" call
 # spectrum.csv is the de novo spectrum over sites passing (1-7);
 # spectrum_background.csv is the ancestral spectrum over the bulk_vaf > 0.15
-# sites removed by step 4.
+# sites removed by step 4. mutation_accumulation.csv holds the per-lineage
+# first-appearance counts per passage.
 
 project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 
@@ -29,6 +31,42 @@ source(file.path(project_root, "paper_figures/scripts/spectrum_utils.R"))
 data_dir <- file.path(project_root, "paper_figures/data/K562_mut_accumulation/")
 output_dir <- file.path(project_root, "paper_figures/output/K562_mut_accumulation/")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+
+# SBS10a accumulation -----------------------------------------------------
+# Notebook cell 55, in the house style. One passage is 21 days (3 weeks).
+# Points and axis text are sized up relative to the other panels so the
+# figure stays readable when it is scaled down.
+
+genotype_colors <- c("WT" = "#438CFD", "P286R" = "#ff1a5e")
+
+# row.names = 1 drops the unnamed index column the notebook writes
+time_series <-
+  read.csv(file.path(data_dir, "mutation_accumulation.csv"), row.names = 1) %>%
+  select(lineage, split, passage, genotype, accumulated_mutations, SBS10a) %>%
+  mutate(
+    genotype = factor(genotype, levels = c("WT", "P286R")),
+    weeks = passage * 3
+  )
+
+ggplot(time_series, aes(x = weeks, y = SBS10a / 1e3,
+                        color = genotype, fill = genotype)) +
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.2, linewidth = 1) +
+  geom_point(size = 3, shape = 21, color = "black", stroke = 0.5) +
+  scale_color_manual(values = genotype_colors) +
+  scale_fill_manual(values = genotype_colors) +
+  scale_x_continuous(breaks = sort(unique(time_series$weeks))) +
+  theme_classic() +
+  theme(
+    legend.position = "none",
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 15)
+  ) +
+  xlab("Time (weeks)") +
+  ylab("SBS10a (thousands)")
+ggsave(file.path(output_dir, "accumulated_SBS10a.pdf"),
+       bg = "transparent",
+       height = 3.25, width = 3.5)
 
 
 # De novo spectra ---------------------------------------------------------
