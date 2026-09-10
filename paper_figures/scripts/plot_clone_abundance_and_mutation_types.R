@@ -100,7 +100,7 @@ single_cell_clones_data %>%
 
 ggsave(filename = file.path(output_dir, "SBS_per_cell_violin.pdf"),
        bg = "transparent",
-       height = 3, width = 3)
+       height = 2, width = 2)
 
 single_cell_clones_data %>%
   select(Cell, SNP_count_de_novo) %>%
