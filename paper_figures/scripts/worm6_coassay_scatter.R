@@ -34,7 +34,8 @@ if (!file.exists(counts_path)) {
   # with clipping, then hand-builds a three-swatch legend at 0.1 / 1.5 / 3.0.
   # Passing guide_legend() to a continuous scale does the same thing: discrete
   # keys drawn at those break values, coloured by the scale itself.
-  ggplot(counts, aes(x = total_counts, y = genes_detected, fill = mean_coverage)) +
+  base_plot <-
+    ggplot(counts, aes(x = total_counts, y = genes_detected, fill = mean_coverage)) +
     geom_point(shape = 21, size = 1.8, colour = "black", stroke = 0.25) +
     scale_fill_viridis_c(
       limits = c(0, 3),
@@ -46,7 +47,6 @@ if (!file.exists(counts_path)) {
     ) +
     # matplotlib's default break spacing, which ggplot would otherwise put at 3000
     scale_y_continuous(breaks = seq(0, 10000, by = 2000)) +
-    scale_x_continuous(breaks = seq(0, 20000, by = 10000)) +
     theme_classic() +
     theme(
       axis.title = element_text(size = 18),
@@ -56,7 +56,23 @@ if (!file.exists(counts_path)) {
     ) +
     xlab("Transcriptomic Reads") +
     ylab("Genes Detected")
+
+  # linear x, as published
+  base_plot +
+    scale_x_continuous(breaks = seq(0, 20000, by = 10000))
   ggsave(file.path(output_dir, "coassay_readcount_scatter.svg"),
+         bg = "transparent",
+         height = 4, width = 6)
+
+  # log10 x: total_counts spans 427 to 25875, so the bulk of the cells are
+  # squeezed into the left third on a linear axis
+  base_plot +
+    # compact labels: "10,000" and "20,000" collide at this width once the
+    # right-hand ticks are only 0.3 decades apart
+    scale_x_log10(breaks = c(500, 1000, 2000, 5000, 10000, 20000),
+                  labels = scales::label_number(
+                    scale_cut = scales::cut_short_scale()))
+  ggsave(file.path(output_dir, "coassay_readcount_scatter_logx.svg"),
          bg = "transparent",
          height = 4, width = 6)
 
