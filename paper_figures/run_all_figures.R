@@ -18,7 +18,8 @@ scripts <- c(
   "anneufinder_plot.R",
   "draw_trees.R",
   "K562_consensus_tree.R",
-  "worm6_haplotype_umap.R"
+  "worm6_haplotype_umap.R",
+  "worm6_coassay_scatter.R"
 )
 
 results <- lapply(scripts, function(s) {

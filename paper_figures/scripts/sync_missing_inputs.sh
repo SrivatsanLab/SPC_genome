@@ -77,11 +77,13 @@ fi
 worm6_src="${WORM6_RESULTS:-$repo_root/results/worm6_final/figures}"
 worm6_dst="$repo_root/paper_figures/data/worm6_final"
 
-if [[ -f "$worm6_src/clean_ind_umap_coords.csv" ]]; then
-  mkdir -p "$worm6_dst"
-  cp "$worm6_src/clean_ind_umap_coords.csv" "$worm6_dst/clean_ind_umap_coords.csv"
-  echo "Copied worm6_final/clean_ind_umap_coords.csv"
-else
-  echo "Missing worm6 UMAP coordinates: $worm6_src/clean_ind_umap_coords.csv" \
-       "(export them from worm6_final_haplotype_assignment.ipynb first)"
-fi
+mkdir -p "$worm6_dst"
+for f in clean_ind_umap_coords.csv coassay_readcount_counts.csv; do
+  if [[ -f "$worm6_src/$f" ]]; then
+    cp "$worm6_src/$f" "$worm6_dst/$f"
+    echo "Copied worm6_final/$f"
+  else
+    echo "Missing worm6 input: $worm6_src/$f" \
+         "(generate it with paper_figures/scripts/export_worm6_*.py)"
+  fi
+done
