@@ -69,3 +69,19 @@ else
   echo "Run notebooks/K562_tree.ipynb first, or set K562_TREE_RESULTS to a" \
        "checkout that has results/K562_tree/trees"
 fi
+
+# worm6 haplotype UMAP: coordinates exported from
+# notebooks/worm6_final_haplotype_assignment.ipynb. The notebook does not write
+# these by default - see the header of worm6_haplotype_umap.R for the one line
+# that does. Point WORM6_RESULTS at another checkout to pull from there.
+worm6_src="${WORM6_RESULTS:-$repo_root/results/worm6_final/figures}"
+worm6_dst="$repo_root/paper_figures/data/worm6_final"
+
+if [[ -f "$worm6_src/clean_ind_umap_coords.csv" ]]; then
+  mkdir -p "$worm6_dst"
+  cp "$worm6_src/clean_ind_umap_coords.csv" "$worm6_dst/clean_ind_umap_coords.csv"
+  echo "Copied worm6_final/clean_ind_umap_coords.csv"
+else
+  echo "Missing worm6 UMAP coordinates: $worm6_src/clean_ind_umap_coords.csv" \
+       "(export them from worm6_final_haplotype_assignment.ipynb first)"
+fi

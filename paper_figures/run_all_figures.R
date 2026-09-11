@@ -17,7 +17,8 @@ scripts <- c(
   "analyse_flowdata.R",
   "anneufinder_plot.R",
   "draw_trees.R",
-  "K562_consensus_tree.R"
+  "K562_consensus_tree.R",
+  "worm6_haplotype_umap.R"
 )
 
 results <- lapply(scripts, function(s) {
