@@ -11,8 +11,9 @@ suppressPackageStartupMessages({
 })
 
 repo_root    <- "/fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/SPC_genome"
-inputfolder  <- file.path(repo_root, "data/K562_tree/sc_outputs")
-outputfolder <- file.path(repo_root, "results/K562_tree/aneufinder")
+# override to run on another set of cells, e.g. a folder of BAM symlinks
+inputfolder  <- Sys.getenv("ANEUFINDER_INPUT", file.path(repo_root, "data/K562_tree/sc_outputs"))
+outputfolder <- Sys.getenv("ANEUFINDER_OUTPUT", file.path(repo_root, "results/K562_tree/aneufinder"))
 dir.create(outputfolder, showWarnings = FALSE, recursive = TRUE)
 
 ncpu <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "4"))
@@ -74,3 +75,17 @@ pdf(heatmap_pdf, width = 16, height = max(8, length(models) * 0.05))
 heatmapGenomewide(cl$classification[[1]])
 dev.off()
 cat(sprintf("Wrote %s\n", heatmap_pdf))
+
+# Per-bin copy number, bins x cells, in the layout of the result.csv that
+# notebooks/K562_tree.ipynb reads: seqnames, start, end, then one column per
+# cell named by its BAM basename
+bins <- models[[1]]$bins
+cn <- sapply(models, function(m) {
+    stopifnot(length(m$bins) == length(bins))
+    m$bins$copy.number
+})
+colnames(cn) <- sub("\\.bam$", "", sapply(models, function(m) m$ID))
+result <- cbind(as.data.frame(bins)[, c("seqnames", "start", "end")], cn)
+result_csv <- file.path(outputfolder, "result.csv")
+write.csv(result, result_csv)
+cat(sprintf("Wrote %s (%d bins x %d cells)\n", result_csv, nrow(cn), ncol(cn)))
