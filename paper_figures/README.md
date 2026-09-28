@@ -31,6 +31,18 @@ the header of each script.
   pooled by construct (AAVS/PolE), the per-sample facet grid, and the
   ancestral background spectrum.
 
+- K562 single-cell copy number (`anneufinder_plot.R`, the CNV section of
+  `draw_trees.R`, and the `K562_cnv_*` / `K562_tree_*` scripts) uses the
+  GC-corrected, blacklisted AneuFinder run of the 1000 sc_PolE_novaseq cells
+  (`scripts/utils/run_aneufinder_K562_sc_PolE_gc.sh`, 1 Mb bins, edivisive),
+  staged into `data/Anneufinder/` as `result.csv`, `cell_ploidy.csv` and
+  `cnv_event_tree_gc.newick`. It replaces the original sc_PolE_novaseq
+  `AneuFinder_output/result.csv` and the `ploidy` column of `full_meta.csv`:
+  that run had no GC correction, which put about a quarter of cells on the
+  wrong overall scale (the apparent genome doublings; see
+  `K562_gc_toggle_ploidy.R`), and its cell columns were mislabelled (column i
+  held the i-th cell in alphabetical order).
+
 Stage them with:
 
 ```bash

@@ -87,3 +87,39 @@ for f in clean_ind_umap_coords.csv coassay_readcount_counts.csv; do
          "(generate it with paper_figures/scripts/export_worm6_*.py)"
   fi
 done
+
+# K562 single-cell CNV (sc_PolE_novaseq cells): the GC-corrected, blacklisted
+# AneuFinder run (scripts/utils/run_aneufinder_K562_sc_PolE_gc.sh) and the
+# per-cell ploidy and CNV event tree built from it
+# (paper_figures/scripts/K562_cnv_event_tree.R). These replace the original
+# sc_PolE_novaseq AneuFinder_output/result.csv and full_meta.csv ploidy, which
+# had no GC correction and mislabelled columns. Point K562_CNV_RESULTS at
+# another checkout to pull from there.
+cnv_src="${K562_CNV_RESULTS:-$repo_root/results/K562_tree}"
+cnv_dst="$repo_root/paper_figures/data/Anneufinder"
+
+mkdir -p "$cnv_dst"
+for pair in "aneufinder_gc/output/result.csv:result.csv" \
+            "sc_trees/cnv_cell_ploidy_gc.csv:cell_ploidy.csv" \
+            "sc_trees/cnv_event_tree_gc.newick:cnv_event_tree_gc.newick"; do
+  src="$cnv_src/${pair%%:*}"
+  dst="$cnv_dst/${pair##*:}"
+  if [[ -f "$src" ]]; then
+    cp "$src" "$dst"
+    echo "Copied Anneufinder/${pair##*:}"
+  else
+    echo "Missing K562 CNV input: $src" \
+         "(run scripts/utils/run_aneufinder_K562_sc_PolE_gc.sh, then K562_cnv_event_tree.R)"
+  fi
+done
+
+# Per-cell SBS tree used by the CNV section of draw_trees.R
+sc_trees_src="${K562_SC_TREES:-/fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/sc_PolE_novaseq/results}"
+sc_trees_dst="$repo_root/paper_figures/data/SingleCellTrees"
+mkdir -p "$sc_trees_dst"
+if [[ -f "$sc_trees_src/sc_test.newick" ]]; then
+  cp "$sc_trees_src/sc_test.newick" "$sc_trees_dst/sc_test.newick"
+  echo "Copied SingleCellTrees/sc_test.newick"
+else
+  echo "Missing $sc_trees_src/sc_test.newick; set K562_SC_TREES"
+fi

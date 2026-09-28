@@ -715,26 +715,27 @@ library(ggtree)
 library(ggplot2)
 setwd(file.path(project_root, "paper_figures/data/Anneufinder/"))
 
-required_cnv_inputs <- c("cnv_sc_test.newick", "full_meta.csv")
+# Per-cell ploidy from the GC-corrected, blacklisted AneuFinder run
+# (cell_ploidy.csv, staged by sync_missing_inputs.sh). The ploidy column of the
+# original full_meta.csv came from an uncorrected run whose columns were
+# mislabelled, and its apparent genome doublings were GC-bias scaling errors.
+required_cnv_inputs <- c("cell_ploidy.csv", "../SingleCellTrees/sc_test.newick")
 if (!all(file.exists(required_cnv_inputs))) {
   missing <- required_cnv_inputs[!file.exists(required_cnv_inputs)]
   message("Skipping CNV subsection in draw_trees.R; missing inputs: ", paste(missing, collapse = ", "))
 } else {
-  # Read the Newick file
-  cnv_tree <- read.tree("cnv_sc_test.newick")
   sc_tree <- read.tree("../SingleCellTrees/sc_test.newick")
 
 # Plot the tree
-p_cnv = ggtree(cnv_tree,layout = "roundrect")
 p_sc = ggtree(sc_tree,layout = "roundrect")
 
 tree_df = p_sc$data
 
-cell_metadata = 
-  read.csv("full_meta.csv", 
+cell_metadata =
+  read.csv("cell_ploidy.csv",
            header = T,
            sep = ",") %>%
-  dplyr::rename(label = X)
+  dplyr::rename(label = cell)
 
 tree_df = 
   left_join(tree_df, cell_metadata)

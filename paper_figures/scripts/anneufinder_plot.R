@@ -1,4 +1,12 @@
+# Genome-wide copy-number heatmap of the K562 single cells (bins x cells),
+# clustered by cell. Input: paper_figures/data/Anneufinder/result.csv, the
+# GC-corrected, blacklisted AneuFinder run staged by sync_missing_inputs.sh
+# (seqnames/start/end, then one column per cell from column 5). The original
+# sc_PolE_novaseq result.csv had no GC correction and mislabelled columns.
+
 project_root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+output_dir <- file.path(project_root, "paper_figures/output/anneufinder_plot/")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 
 library(dplyr)
@@ -38,7 +46,9 @@ ph = pheatmap(mat_data_capped,
          cluster_cols = TRUE,show_colnames = F,show_rownames = F,
          scale = "none",  # change to "row" or "column" if you want z-score normalization
          fontsize_row = 6,
-         fontsize_col = 6)
+         fontsize_col = 6,
+         filename = file.path(output_dir, "cnv_heatmap.pdf"),
+         width = 10, height = 8)
 
 col_clusters <- cutree(ph$tree_col, k = 10)
 table(col_clusters)
@@ -61,4 +71,6 @@ pheatmap(mat_data_capped,
          scale = "none",  # change to "row" or "column" if you want z-score normalization
          fontsize_row = 6,
          fontsize_col = 6,
-         annotation_col = annotation_col)
+         annotation_col = annotation_col,
+         filename = file.path(output_dir, "cnv_heatmap_clusters.pdf"),
+         width = 10, height = 8)
