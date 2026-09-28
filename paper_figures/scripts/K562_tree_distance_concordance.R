@@ -1,11 +1,12 @@
 # Do the per-cell SBS and CNV trees agree on which K562 cells are close?
 #
-# Inputs (Dustin's sc_PolE_novaseq run, 1000 cells + a K562 root tip):
+# Inputs (1000 sc_PolE_novaseq cells + a K562 root tip):
 #   sc_og_test.newick  - NJ on Hamming distance over selected SBS sites
 #                        (notebooks/K562_tree.ipynb cells 115-117)
-#   cnv_sc_test.newick - NJ on 1 - Pearson r of AneuFinder 1 Mb copy-number
-#                        profiles (cells 150-152); override with K562_CNV_TREE,
-#                        e.g. the tree from K562_cnv_event_tree.R
+#   CNV tree           - the GC-corrected CNV event tree from
+#                        K562_cnv_event_tree.R (override with K562_CNV_TREE).
+#                        cnv_sc_test.newick, the notebook's original CNV tree,
+#                        was built from mislabelled copy-number columns
 #   full_meta.csv      - per-cell population labels
 #
 # Distances are patristic (sum of branch lengths between two tips). Tests:
@@ -30,9 +31,10 @@ input_dir <- Sys.getenv(
   "K562_SC_TREES",
   "/fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/sc_PolE_novaseq/results"
 )
-cnv_tree_path <- Sys.getenv("K562_CNV_TREE", file.path(input_dir, "cnv_sc_test.newick"))
+cnv_tree_path <- Sys.getenv("K562_CNV_TREE",
+                           file.path(project_root, "results/K562_tree/sc_trees/cnv_event_tree_gc.newick"))
 # suffix for the output folder, so runs against different CNV trees coexist
-output_tag <- Sys.getenv("K562_CONCORDANCE_TAG", "")
+output_tag <- Sys.getenv("K562_CONCORDANCE_TAG", "_cnv_events_gc")
 output_dir <- file.path(project_root, paste0("paper_figures/output/K562_tree_distance_concordance", output_tag, "/"))
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 

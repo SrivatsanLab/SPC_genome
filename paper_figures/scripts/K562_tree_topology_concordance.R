@@ -1,8 +1,8 @@
 # Are the per-cell SBS and CNV trees topologically similar?
 #
-# Same inputs as K562_tree_distance_concordance.R (Dustin's sc_PolE_novaseq
-# run: sc_og_test.newick and cnv_sc_test.newick, 1000 cells + a K562 root tip,
-# dropped here; override the CNV tree with K562_CNV_TREE). Each statistic is compared with 999 random relabellings of the
+# Same inputs as K562_tree_distance_concordance.R: sc_og_test.newick and the
+# GC-corrected CNV event tree (override with K562_CNV_TREE); the K562 root tip
+# is dropped. Each statistic is compared with 999 random relabellings of the
 # CNV tree's tips, which keep both tree shapes and destroy any correspondence:
 #   Robinson-Foulds  - normalised RF distance over all splits (unrooted)
 #   shared cherries  - sister-tip pairs present in both trees
@@ -24,9 +24,10 @@ input_dir <- Sys.getenv(
   "K562_SC_TREES",
   "/fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/sc_PolE_novaseq/results"
 )
-cnv_tree_path <- Sys.getenv("K562_CNV_TREE", file.path(input_dir, "cnv_sc_test.newick"))
+cnv_tree_path <- Sys.getenv("K562_CNV_TREE",
+                           file.path(project_root, "results/K562_tree/sc_trees/cnv_event_tree_gc.newick"))
 # suffix for the output folder, so runs against different CNV trees coexist
-output_tag <- Sys.getenv("K562_CONCORDANCE_TAG", "")
+output_tag <- Sys.getenv("K562_CONCORDANCE_TAG", "_cnv_events_gc")
 output_dir <- file.path(project_root, paste0("paper_figures/output/K562_tree_topology_concordance", output_tag, "/"))
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 

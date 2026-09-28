@@ -9,9 +9,12 @@
 # Steps:
 #   1. keep cells at the dominant (near-triploid) ploidy, mean copy number in
 #      [ploidy_min, ploidy_max); off-peak cells are mostly scaling errors or
-#      doublets and would read as genome-wide gains or losses
+#      doublets and would read as genome-wide gains or losses. To keep them,
+#      widen the window and set K562_NORMALIZE_PLOIDY=1, which rescales every
+#      cell to the median ploidy first
 #   2. reference = per-bin modal copy number across those cells; bins whose
-#      reference is 0 (unmappable) and chrY are dropped
+#      reference is 0 (unmappable) and chrY are dropped, and optionally bins
+#      mostly covered by large repeats (K562_MASK_FRACTION, K562_MASK_MIN)
 #   3. CNV call = a run of >= min_bins consecutive bins on one chromosome where
 #      a cell is above (gain) or below (loss) the reference; shorter runs are
 #      treated as noise
@@ -23,7 +26,8 @@
 #   6. Hamming distance -> NJ, rooted on an all-zero K562 tip
 #
 # Input: an AneuFinder result.csv (1 Mb bins x cells; K562_CNV_RESULT, default
-# the original sc_PolE_novaseq run, which had no GC correction or blacklist) and
+# the GC-corrected, blacklisted run from run_aneufinder_K562_sc_PolE_gc.sh; the
+# original sc_PolE_novaseq run had neither, and its columns are mislabelled) and
 # full_meta.csv for the set of cells. Ploidy is each cell's mean copy number in
 # that result.csv, as in the notebook. K562_CNV_TAG suffixes the output files.
 
@@ -38,8 +42,9 @@ input_dir <- Sys.getenv(
   "K562_SC_PROJECT",
   "/fh/fast/srivatsan_s/grp/SrivatsanLab/Dustin/sc_PolE_novaseq"
 )
-result_csv <- Sys.getenv("K562_CNV_RESULT", file.path(input_dir, "AneuFinder_output/result.csv"))
-tag <- Sys.getenv("K562_CNV_TAG", "")
+result_csv <- Sys.getenv("K562_CNV_RESULT",
+                         file.path(project_root, "results/K562_tree/aneufinder_gc/output/result.csv"))
+tag <- Sys.getenv("K562_CNV_TAG", "_gc")
 output_dir <- file.path(project_root, "results/K562_tree/sc_trees/")
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -65,10 +70,32 @@ write.csv(data.frame(cell = meta$X, pop = meta$pop, ploidy = ploidy,
           file.path(output_dir, paste0("cnv_cell_ploidy", tag, ".csv")), row.names = FALSE)
 cn <- as.matrix(cnv[, keep_cells])
 
+# Optionally rescale each cell to the median ploidy before calling events, so a
+# uniform offset (AneuFinder picking the wrong overall scale, or a whole-genome
+# doubling) is not read as a gain or loss in every bin
+if (Sys.getenv("K562_NORMALIZE_PLOIDY", "0") == "1") {
+  target <- median(ploidy[keep_cells])
+  cn <- round(sweep(cn, 2, target / ploidy[keep_cells], "*"))
+  storage.mode(cn) <- "integer"
+  cat(sprintf("rescaled each cell to ploidy %.2f\n", target))
+}
+
 modal <- function(x) as.integer(names(which.max(table(x))))
 reference <- apply(cn, 1, modal)
 
 keep_bins <- reference > 0 & bins$seqnames != "chrY"
+# Optionally drop bins dominated by large repeats (centromeres, gaps, satellites,
+# segmental duplications; see make_hg38_repeat_mask.R)
+mask_csv <- Sys.getenv("K562_MASK_FRACTION", "")
+if (nzchar(mask_csv)) {
+  mask_min <- as.numeric(Sys.getenv("K562_MASK_MIN", "0.25"))
+  mf <- read.csv(mask_csv)
+  mf <- mf$mask_frac[match(paste(bins$seqnames, bins$start), paste(mf$seqnames, mf$start))]
+  stopifnot(!anyNA(mf))
+  cat(sprintf("masking %d bins >= %.0f%% repeat (%d of them otherwise kept)\n",
+              sum(mf >= mask_min), 100 * mask_min, sum(keep_bins & mf >= mask_min)))
+  keep_bins <- keep_bins & mf < mask_min
+}
 bins <- bins[keep_bins, ]
 cn <- cn[keep_bins, ]
 reference <- reference[keep_bins]
