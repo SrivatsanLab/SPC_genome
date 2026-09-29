@@ -1,0 +1,10 @@
+# ncomp sweep with seeded MQuad + winning defaults. ncomp = 4.
+name: ncomp4_seeded
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  ncomp: 4

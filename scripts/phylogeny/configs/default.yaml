@@ -1,0 +1,12 @@
+# Default phylo run for worm6_final.
+# Everything not set here comes from phylo/utils/_defaults.yaml.
+
+name: worm6_final_default
+
+# All paths are resolved relative to this config file's directory.
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+  # bwm_cells_csv:        ../../../results/worm6_final/GEX/manual_GEX_annotation/bwm_cells.csv
+  # abu_module_cells_csv: ../../../results/worm6_final/GEX/manual_GEX_annotation/abu_module_cells.csv
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny

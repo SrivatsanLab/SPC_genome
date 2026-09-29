@@ -1,0 +1,17 @@
+# Canonical run for worm6_final with all sweep-optimized parameters.
+# Inherits every knob from phylo/utils/_defaults.yaml as of 2026-09-15:
+#   panels.exclude_mutation_types: ["C>A"]        (§10.10 winner)
+#   panels.vaf_normalize: hypergeometric          (§10.10 winner)
+#   trees.ncomp: 1                                (sweep #1 §10.11 winner)
+#   trees.mquad_delta_bic_threshold: 5            (sweep #2 §10.12 winner)
+#   trees.core_selection: mquad
+#   trees.mquad_nproc: auto → 1 when seeded       (see mquad_select.py)
+#
+# This run is the intended input to clade pseudobulk / GSEA work. Its
+# trees/bipartitions.csv is the primary handoff (see docs/phylo_pipeline.md §7).
+name: worm6_final_best
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny

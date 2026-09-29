@@ -1,0 +1,11 @@
+# C>A exclusion + colmean per-cell-equal VAF.
+name: excl_c2a_colmean
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  vaf_normalize: colmean

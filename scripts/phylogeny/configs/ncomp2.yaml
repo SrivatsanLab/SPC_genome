@@ -1,0 +1,10 @@
+# Sweep #1b — ncomp = 2 (intermediate; between the rank-1 signal and the ncomp=4 baseline).
+name: ncomp2
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  ncomp: 2

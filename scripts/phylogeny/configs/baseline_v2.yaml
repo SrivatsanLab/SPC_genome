@@ -1,0 +1,8 @@
+# Baseline for the 2026-09-10 panel-normalization × mutation-type sweep.
+# Same panel + tree config as configs/default.yaml (current run), pinned by name.
+name: baseline_v2
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny

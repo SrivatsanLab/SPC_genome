@@ -1,0 +1,12 @@
+# Trustworthy-only clade matching companion to worm6_final_best_v2.
+# Uses the same name (so tree outputs are shared) but writes to
+# clade_matching_trustworthy/ subdir via the trustworthy_only flag.
+name: worm6_final_best_v2
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+clade_matching:
+  trustworthy_only: true

@@ -1,0 +1,17 @@
+# Same as tct_kept_relax03 but with min_carriers dropped from 2 to 1.
+# Rationale: singletons are autapomorphies (can't create bipartitions in
+# character-based methods) but they DO carry cell-pair distance information
+# (a variant covered in cells i and j where AD_i≥1 and AD_j=0 says "i and j
+# differ at this site"). Distance NJ can use that; MP/ML can't.
+name: tct_kept_relax03_ncar1
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  retain_trinuc_contexts: ["TCT>TAT"]
+  other_worm_max_vaf: 0.03
+  min_carriers: 1

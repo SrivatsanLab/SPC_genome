@@ -1,0 +1,17 @@
+# Canonical clean run v2 for worm6_final. Same as worm6_final_best (v1) but
+# with the ncomp reversal per TREE_FORWARD_STATUS.md §10.16.
+# Inherits all winning knobs from phylo/utils/_defaults.yaml as of 2026-09-15 evening:
+#   panels.exclude_mutation_types: ["C>A"]        (§10.10)
+#   panels.vaf_normalize: hypergeometric          (§10.10)
+#   trees.ncomp: 3                                (§10.16 reversal)
+#   trees.mquad_delta_bic_threshold: 5            (§10.12)
+#   trees.core_selection: mquad, seeded (§10.13)
+#
+# Supersedes worm6_final_best. Downstream pseudobulk / GSEA should read from
+# runs/worm6_final_best_v2/clade_matching/cross_worm_groups_*.csv.
+name: worm6_final_best_v2
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny

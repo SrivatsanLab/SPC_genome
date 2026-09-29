@@ -1,0 +1,11 @@
+# Sweep #1a — ncomp = 1 (matches the K-1 rank prediction after per-variant centering).
+# All other knobs inherit the current defaults (excl_c2a + hypergeometric depth-norm VAF).
+name: ncomp1
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  ncomp: 1

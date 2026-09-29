@@ -1,0 +1,11 @@
+# Sweep #1c — ncomp = 4 (current default; matches the excl_c2a_depth_norm run).
+# Rerun explicitly so all three sit in comparable run dirs.
+name: ncomp4
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  ncomp: 4

@@ -1,0 +1,14 @@
+# Panel config: same filters as worm6_final_best_v2 (a.k.a. panels/old/) but
+# retain the TCT>TAT trinucleotide context inside the otherwise-excluded C>A
+# pool. Rationale: pole-1 P270R is dominant at TCT — this is the C>A subset
+# most likely to be true somatic, while the rest of C>A is 8-oxoG.
+name: tct_kept
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  retain_trinuc_contexts: ["TCT>TAT"]

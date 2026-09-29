@@ -1,0 +1,12 @@
+# Hypergeometric depth-normalized per-worm bulk VAF (§10.9 B).
+# target_dp: null → auto-pick the min positive column sum per worm.
+name: depth_norm_vaf
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  vaf_normalize: hypergeometric
+  target_dp: null

@@ -1,0 +1,10 @@
+# Sweep #2b — MQuad ΔBIC threshold = 10 (current default).
+name: mquad10
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  mquad_delta_bic_threshold: 10

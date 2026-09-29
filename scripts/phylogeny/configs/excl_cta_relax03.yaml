@@ -1,0 +1,13 @@
+# All C>A excluded (no TCT>TAT rescue), other_worm_max_vaf 0.005 → 0.03.
+# Companion to tct_kept_relax03 to isolate the contribution of retaining
+# TCT>TAT from the contribution of relaxing the cross-worm constraint.
+name: excl_cta_relax03
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  other_worm_max_vaf: 0.03

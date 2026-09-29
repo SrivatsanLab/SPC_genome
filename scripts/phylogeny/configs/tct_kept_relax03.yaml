@@ -1,0 +1,16 @@
+# Same as tct_kept but with other_worm_max_vaf relaxed 0.005 → 0.03.
+# Motivation: with 20%+ cross-capsule contamination, true worm-private somatic
+# variants at ~15% clade fraction can leak into other worms at ~3% VAF via
+# ambient reads. The old 0.005 threshold treated those as germline; 0.03 lets
+# them back in.
+name: tct_kept_relax03
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  retain_trinuc_contexts: ["TCT>TAT"]
+  other_worm_max_vaf: 0.03

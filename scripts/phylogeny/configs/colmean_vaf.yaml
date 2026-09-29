@@ -1,0 +1,11 @@
+# colmean: unweighted mean of per-cell VAFs among covered cells (§10.9 B).
+# Alternative to pooled (depth-weighted) that gives equal weight to each covered cell.
+name: colmean_vaf
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  vaf_normalize: colmean

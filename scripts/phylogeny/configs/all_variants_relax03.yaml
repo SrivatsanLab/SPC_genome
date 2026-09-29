@@ -1,0 +1,14 @@
+# No substitution-type exclusion (C>A retained wholesale), other_worm_max_vaf
+# 0.005 → 0.03. Serves as the "ceiling" panel — largest variant set the
+# current pipeline can admit under the relaxed cross-worm constraint. If this
+# still gives near-zero FBP support, the ceiling is upstream of any filter.
+name: all_variants_relax03
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: []
+  other_worm_max_vaf: 0.03

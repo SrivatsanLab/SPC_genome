@@ -1,0 +1,11 @@
+# Reproducibility rerun of worm6_final_best (ncomp=1) with the deterministic-hash
+# fix (§10.17). Ncomp=1 pinned explicitly since the default is now ncomp=3.
+name: worm6_final_best_v1_repro
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+trees:
+  ncomp: 1

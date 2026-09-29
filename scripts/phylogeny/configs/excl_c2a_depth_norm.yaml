@@ -1,0 +1,12 @@
+# Combined: C>A exclusion + hypergeometric depth-normalized VAF.
+name: excl_c2a_depth_norm
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
+  vaf_normalize: hypergeometric
+  target_dp: null

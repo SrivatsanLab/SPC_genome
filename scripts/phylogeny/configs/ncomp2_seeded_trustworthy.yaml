@@ -1,0 +1,8 @@
+name: ncomp2_seeded
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+trees:
+  ncomp: 2
+clade_matching:
+  trustworthy_only: true

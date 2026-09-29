@@ -1,0 +1,31 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+name = "phylo"
+version = "0.0.1"
+description = "Phylogenetic inference on single-cell WGS panels. Intended to fold into cellspec.tl.phylo."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "anndata>=0.8",
+  "cellspec",
+  "numpy>=1.20",
+  "pandas>=1.3",
+  "pyyaml>=6.0",
+  "scanpy>=1.10",
+  "scipy>=1.7",
+  "tqdm>=4.62",
+]
+
+[project.scripts]
+phylo-run = "phylo.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["phylo"]
+
+[tool.ruff]
+line-length = 120
+lint.select = ["E", "F", "I", "UP", "W"]
+lint.ignore = ["E501"]

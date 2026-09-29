@@ -1,0 +1,114 @@
+# phylo default config. User configs deep-merge over this.
+# All numeric knobs come from docs/T2_tree_validation_plan.md +
+# results/worm6_final/DNA_analysis/phylogeny/PLAN_AMENDMENTS.md.
+
+name: null                                    # falls back to config-file stem
+output_root: .                                # runs/<name>/ under here
+
+inputs:
+  adata: null                                 # required: joint_variants_process.h5ad
+  bwm_cells_csv: null                         # optional; from GEX (T-C)
+  abu_module_cells_csv: null                  # optional; from GEX (QC exclusion)
+
+qc:
+  # Composable predicate list. Any registered predicate (phylo.pp.qc.PREDICATES).
+  predicates:
+    - name: not_background                    # capsule_type == "cell"
+    - name: purity_gte
+      threshold: 0.5                          # amendments recommend 0.7 for final; 0.5 is a permissive default
+    - name: not_doublet
+      max_eff_modules: 3.0                    # 1.5 also catches contaminated singlets; 3.0 targets true multi-worm mixing
+    - name: not_abu_module                    # no-op if csv missing
+      csv: null
+    - name: worm_size_gte
+      min_cells_per_worm: 30
+  min_cells_per_worm_for_panel: 30            # gate for panels stage
+
+g0:
+  n_divisions_l4_soma: 10.0                   # for mu_div ≈ burden / n_div
+  min_mu_div: 3.0                             # gate: below this, stop
+  sharing_max_pairs: 5000                     # per side (within, cross)
+  seed: 0
+
+panels:
+  # Nullable bounds: null → no bound on that side.
+  # Lower bound off: ≥2 carriers already filters singletons; keeps sub-clonal signal.
+  # Upper bound at 0.30 sits well below the germline band (~0.69 at α=0.31).
+  somatic_vaf_band: [null, 0.30]
+  other_worm_max_vaf: 0.005                   # "≈ 0 in every other worm"
+  min_carriers: 2                             # ≥2 cells in own worm — the singleton filter
+  min_bulk_dp_per_worm: 5                     # skip variants with too little own-worm depth
+  blacklist_min_worms: 3                      # shared in ≥3 worms → blacklist
+  blacklist_vaf_min: 0.005                    # counted as "shared" above this VAF
+  # Substitution-type exclusion (§10.9 A). Any of "C>A"/"C>G"/"C>T"/"T>A"/"T>C"/"T>G";
+  # G>T is canonicalized to C>A automatically. Empty list = no exclusion.
+  # Default excludes C>A on the finding (2026-09-10 sweep, TREE_FORWARD_STATUS.md §10.10):
+  # the pol-1 P270R + 8-oxoG collision dominates panel noise; dropping C>A raises the
+  # §6.1-amplitude-band pass rate from 2.7% to 8.9% when combined with vaf_normalize.
+  exclude_mutation_types: ["C>A"]
+  # Per-worm VAF normalization (§10.9 B):
+  #   "pooled"         : Σ AD / Σ DP (depth-weighted; older default)
+  #   "hypergeometric" : hypergeometric downsample to target_dp via cellspec.compute_vaf
+  #   "colmean"        : unweighted mean of per-cell VAFs — DO NOT USE (see §10.10)
+  # Hypergeometric is the current default: it pulls high-DP outliers to the median
+  # positive DP per worm and leaves typical sites unchanged.
+  vaf_normalize: hypergeometric
+  target_dp: null                             # null → median positive DP per worm
+
+trees:
+  method: svd_bipart                          # only implemented builder
+  # ncomp=3 per TREE_FORWARD_STATUS.md §10.16 seeded ncomp sweep: MQuad's per-variant
+  # filter enriches the panel enough that the effective signal rank exceeds K-1=1,
+  # so multiple SVD components pick up complementary lineage-informative axes.
+  # ncomp=3 unlocks depth-2 cross-worm signal (cosine p=0.000, vs p=0.624 at ncomp=1),
+  # eliminates the ncomp=1 depth-3 anti-signal, and produces 1.9× more trustworthy
+  # clades across 1.8× more worms. The pre-seed sweep #1 preference for ncomp=1 was
+  # driven by BBMix multiprocessing noise + strict mquad=10; both are fixed now.
+  ncomp: 3
+  min_dp_var: 1                               # per-cell min depth to count a variant as observed
+  min_variants_to_split: 20                   # panel-size floor per node
+  min_clade_size: 10                          # do not split below this cell count
+  max_depth: 6                                # hard depth cap
+  seed: 0
+  # Core selection: "none" | "centroid" | "mquad".
+  # "mquad": per-variant ΔBIC test (Vireo/BBMix 1- vs 2-component binomial mixture) —
+  # keeps variants with genuine bimodal AD/DP structure and discards noise variants
+  # k-means would otherwise force into a module. See TREE_FORWARD_STATUS.md §10.2.
+  core_selection: mquad
+  # ΔBIC threshold set by sweep #2 (TREE_FORWARD_STATUS.md §10.12): monotonically
+  # improved from 10 → 5 (trustworthy 6/2worms → 16/8worms). At 1× coverage no
+  # single variant has strong ΔBIC evidence; joint structure across many weakly-
+  # informative variants is what carries signal.
+  mquad_delta_bic_threshold: 5.0
+  n_core: null                                # only used when core_selection == "centroid"
+  # Per-node re-filter: variants with fewer than min_carriers_at_node cells carrying
+  # any alt read *in this node's cells* are dropped before SVD / MQuad. Fixes §10.2 item 1.
+  min_carriers_at_node: 2
+  # MQuad internal multiprocessing per-node call. null / "auto" → $SLURM_CPUS_PER_TASK (fallback 1).
+  mquad_nproc: auto
+
+validate:                                     # placeholder
+  vaf_amplitude_band: [0.25, 0.45]
+  split_half_reps: 20
+  min_reproducibility_frac: 0.8
+
+covariates: {}                                # placeholder
+bwm: {}                                       # placeholder
+
+clade_matching:
+  rna_path: ../../../results/worm6_final/GEX/adata_gex_spliced_soupx_processed.h5ad
+  counts_layer: counts
+  similarity_methods: [pearson, spearman, cosine]
+  n_null: 500
+  min_total_counts: 20                        # per-gene, across all pseudobulks
+  min_worms_per_depth: 2
+  # Subtract per-worm mean expression from each clade before computing similarity.
+  # Required at 1× coverage — without it, raw log-CPM similarity is dominated by
+  # shared worm-level baseline (batch, RNA quality, ambient composition), and
+  # observed ≈ null median at every depth regardless of tree quality.
+  residualize_by_worm: true
+  # Filter to trustworthy clades only (MQuad-selected, VAF in [0.20, 0.45], both
+  # sides ≥ 10 cells). When true, output lands at
+  # ``clade_matching_trustworthy/`` to keep both runs side-by-side.
+  trustworthy_only: false
+  seed: 0

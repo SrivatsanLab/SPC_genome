@@ -1,0 +1,10 @@
+# Exclude C>A / G>T substitutions to strip oxidative-damage noise (§10.9 A).
+name: excl_c2a
+
+inputs:
+  adata: ../../../results/worm6_final/DNA_analysis/joint_variants_process.h5ad
+
+output_root: ../../../results/worm6_final/DNA_analysis/phylogeny
+
+panels:
+  exclude_mutation_types: ["C>A"]
