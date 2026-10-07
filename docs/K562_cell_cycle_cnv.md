@@ -187,11 +187,63 @@ is the stronger signal (sisters 1.51x, p = 0.0002).
   should be checked without them. `K562_aneufinder_clean_heatmap.R` with `K562_DROP_NOISY=1` drops
   them: `genomeHeatmap_no_artefacts_rtcorr_250kb_quality.pdf` (882 cells).
 
+## SBS sites vs replication timing
+
+- `K562_sbs_tree_sites.R`: the SBS tree (`sc_og_test.newick`) was built in
+  `sc_PolE_novaseq/analysis.ipynb` cell 143 from `sc_PolE_filtered_no_singletons.h5ad`; the site
+  list was not saved and three selection cells (n = 100 / 1000 / 5000 per set) were run in several
+  sessions. Rebuilding each (n most frequent sites + n most enriched per population, P_5..P_0,
+  odds ratio) and the NJ tree: n = 100 (700 sites) reproduces the tree (patristic r = 0.98; RF 798,
+  from tied counts and NJ ties); 1000 and 5000 do not (r = -0.46, -0.58). Site names in the h5ad
+  are 0-based positions (reference base matches at name + 1 for all sites); outputs use 1-based.
+- 157 of the 700 tree sites (22%) are off the nuclear main chromosomes: 35 chrM (all among the 100
+  most frequent) and 122 on unplaced/alt contigs, mostly repeat/rDNA-rich ones
+  (chr14_GL000225v1_random 37, chrUn_KI270438v1 29, chrUn_KI270467v1 18, chrUn_GL000220v1 8),
+  versus 6% of all called sites. Of the 543 nuclear tree sites, 303 are in repeat-masked or
+  low-mappability sequence; 240 are callable.
+- `K562_sbs_rt_enrichment.R`: early/mid/late = thirds of the callable genome (Umap k100, outside the
+  repeat mask and blacklist; 2.34 Gb) by K562 Repli-seq RT; expected counts trinucleotide-matched
+  (pyrimidine-centred). Results (observed/expected, early / mid / late):
+  - Pol e signature (TCT>TAT, TTT>TGT), 40,862 called sites: 0.83 / 0.95 / 1.20 (p < 1e-200)
+  - other SBS, ~2.0 M: 0.97 / 1.00 / 1.02; all called: 0.97 / 1.00 / 1.03
+  - callable tree sites, 240: 1.23 (95% CI 1.04-1.40) / 0.86 / 0.90 (p = 0.04); only 4 are Pol e
+    signature; tree vs all called sites p = 0.017
+- Called mutations show the expected late-replication bias, driven by the Pol e signature (coverage
+  in S-phase cells favours early regions, so detection bias would act the other way). The tree's
+  sites are not representative Pol e mutations: frequency/enrichment selection picked mitochondrial,
+  unplaced-contig and hard-to-map sites, and the callable remainder leans early.
+
+### Bulk de novo SBS (mutation-accumulation clones)
+
+`K562_bulk_sbs_sites.R`: from `K562_mut_accumulation_raw.h5ad` (17 bulk samples; AAVS/WT and
+PolE P286R clones 4-6, passages 1-3), following `notebooks/K562_mut_accumulation.ipynb`: SNVs with
+pooled VAF < 0.15; "high" in a sample = 10 <= DP <= 100, AD >= 2, VAF > 0.15. Stricter sets (the
+notebook flags its own counts as broken, millions per clone): private to one genotype, and
+persistent = also high in >= 2 passages of the same clone. Positions in this h5ad are 1-based.
+P286R private 493 k (persistent 71 k); WT private 373 k (persistent 23 k).
+
+Replication timing (observed/expected, early / mid / late, callable genome, trinucleotide-matched):
+
+| Set | Sites | Early | Mid | Late |
+|---|---|---|---|---|
+| bulk P286R persistent | 56,725 | 0.80 | 1.01 | 1.19 |
+| ... Pol e signature | 22,825 | 0.79 | 1.03 | 1.16 |
+| ... other SBS | 33,900 | 0.81 | 0.99 | 1.21 |
+| bulk WT persistent | 14,165 | 0.67 | 0.97 | 1.38 |
+| bulk P286R private | 367,310 | 0.94 | 0.98 | 1.08 |
+| bulk WT private | 258,754 | 1.07 | 0.97 | 0.96 |
+| single-cell called, Pol e signature | 40,862 | 0.83 | 0.95 | 1.20 |
+| SBS-tree sites (callable) | 240 | 1.23 | 0.86 | 0.90 |
+
+Persistent de novo mutations are late-enriched in both genotypes, more steeply in WT (late/early
+2.1) than P286R (1.5), consistent with POLE-mutant errors depending less on replication timing.
+Non-persistent ("private") sets flatten or reverse the trend, as do the SBS-tree sites - the
+signature of artefacts in well-covered early regions. Single-cell Pol e signature calls match the
+bulk P286R persistent profile.
+
 ## Still open
 
-- Mutations vs replication timing (high-quality Pol e calls, trinucleotide- and callability-matched
-  null): not yet run; the filtered calls (`filtered_SBS.csv`, `K562_tree_polE.h5ad` from
-  `notebooks/K562_tree.ipynb`) are not in this checkout.
+- Rebuild the SBS tree from callable nuclear Pol e signature sites only and compare again.
 - Which >= 3 Mb events the same-population sister pairs share.
 - Check the 60% S-phase fraction against flow cytometry.
 - Re-run the population sister tests without noisy cells (P_3/P_4 carry more of them).

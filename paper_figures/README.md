@@ -77,6 +77,12 @@ the header of each script.
   cells). Upstream inputs are built by `scripts/utils/download_replication_timing.sh`,
   `replication_timing_to_hg38.R`, `fragment_gc_*.R` and
   `replication_regress_segment.R`.
+- SBS vs replication timing: `K562_sbs_tree_sites.R` (recovers the 700
+  sites behind `sc_og_test.newick` from `sc_PolE_filtered_no_singletons.h5ad`),
+  `K562_bulk_sbs_sites.R` (de novo SBS from bulk WGS of the
+  mutation-accumulation clones) and `K562_sbs_rt_enrichment.R`
+  (trinucleotide-matched enrichment in early/mid/late replicating thirds of
+  the callable genome).
 
 Stage them with:
 
