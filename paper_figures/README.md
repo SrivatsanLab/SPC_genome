@@ -43,6 +43,41 @@ the header of each script.
   `K562_gc_toggle_ploidy.R`), and its cell columns were mislabelled (column i
   held the i-th cell in alphabetical order).
 
+- `K562_offpeak_ploidy.R` classifies the 110 cells off the dominant ploidy
+  as artefacts or real copy-number changes, from the run's QC and GC-corrected
+  read depth, and recomputes agreement with the K562 reference profile. It
+  needs the AneuFinder R library (see the run script) and the run's
+  `MODELS/` and `binned-GC/` folders. Results: `docs/K562_aneufinder_gc_review.md`.
+
+- `K562_cnv_reference_correlation.R` reproduces the notebook's per-cell
+  correlation with the K562 reference profile (cells 134-148) on the
+  GC-corrected run, and writes the unmappable-bin mask
+  (`results/K562_tree/masks/unmappable_bins_<binsize>.csv`) that the notebook
+  now reads.
+- `K562_cnv_heatmap_by_bin.R` draws the copy-number heatmap with bins as rows
+  (genome order) and hierarchically clustered cells as columns; legends go to a
+  separate `*_legends.svg`.
+- `K562_cnv_population_scan.R` looks for copy-number changes specific to one
+  population (P_0-P_5).
+- `K562_cnv_cell_similarity.R` asks whether highly similar cells (GC-adjusted
+  depth) share a population, controlling for barcode-well effects, and lists
+  groups of near-identical cells.
+- These take `K562_AF_DIR` to run on the 500 kb / 250 kb AneuFinder runs
+  (`run_aneufinder_K562_sc_PolE_gc.sh 5e5`).
+
+- Cell cycle and replication-corrected copy number (full write-up:
+  `docs/K562_cell_cycle_cnv.md`): `K562_replication_timing_coverage.R`
+  (phase per cell from coverage vs K562 Repli-seq, each chromosome a
+  replicate), `K562_cell_cycle_profile.R` (FACS-style profile),
+  `K562_replication_ideogram.R` (single-cell ideogram, zooms, arm scatter;
+  uses ggideogram), `K562_cnv_distance_tree.R` and `K562_cnv_tree_sisters.R`
+  (distance tree and same-population sister test on the corrected calls),
+  `K562_sbs_tree_cell_cycle.R` (SBS tree vs replication state),
+  `K562_aneufinder_clean_heatmap.R` (bare AneuFinder heatmap without artefact
+  cells). Upstream inputs are built by `scripts/utils/download_replication_timing.sh`,
+  `replication_timing_to_hg38.R`, `fragment_gc_*.R` and
+  `replication_regress_segment.R`.
+
 Stage them with:
 
 ```bash
