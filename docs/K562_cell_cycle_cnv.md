@@ -257,9 +257,35 @@ mutation-accumulation WGS = germline/ancestral) and ENCODE K562 germline calls (
 - Caveat: the bulk WGS is of separate K562 sublines (mutation-accumulation clones), so variants
   specific to the single-cell culture's history are "not in bulk" rather than artefacts.
 
+### SBS trees rebuilt without flagged sites
+
+`K562_sbs_tree_rebuild.R` -> `paper_figures/output/K562_sbs_tree_rebuild/`. Flagged = germline in bulk
+or ENCODE, chrM, unplaced/alt contig (531 k of 3.1 M calls). Sets: original (700; 367 flagged), pruned
+(original minus flagged: 333), reselected (the notebook's 100-per-set selection on unflagged sites:
+700). Single-cell tree as in the notebook (Hamming, NJ, K562 root); population tree (presence in
+any cell, sites in >= 2 populations, Hamming, NJ, root P_5).
+
+| Set | Same-pop sisters | Same noise quintile | Same cell-cycle stage | Mantel r with CNV tree (G1/G2, >= 3 Mb) |
+|---|---|---|---|---|
+| original | 1.45x (p < 1e-4) | 1.29x (p = 0.005) | 1.09x (ns) | 0.04 (p = 0.22) |
+| pruned | 2.27x (p < 1e-4) | 1.07x (ns) | 1.03x (ns) | 0.105 (p = 0.019) |
+| reselected | 1.15x (p = 0.07) | 1.17x (p = 0.046) | 1.06x (ns) | 0.102 (p = 0.008) |
+
+- Pruning removes the noise structure of the original tree (germline sites track coverage) and the
+  pruned tree is unrelated to the original (patristic r 0.25, RF maximal).
+- Both cleaned trees agree weakly but significantly with the independently measured CNV tree; the
+  original did not.
+- Caveat: 600 of the original sites were selected for population enrichment, so same-population
+  sisters are inflated by construction; the population-sister numbers are not independent evidence.
+  A fair test needs label-free site selection (e.g. clean sites in >= N cells, or selection on half
+  the cells and testing on the other half).
+- Population trees: P_5 root (by construction), then P_4, then P_3 in all three; the order of P_0,
+  P_1, P_2 changes with the site set.
+
 ## Still open
 
-- Rebuild the SBS tree from callable nuclear Pol e signature sites only and compare again.
+- Rebuild the SBS tree from label-free selected clean sites (and from bulk-validated persistent
+  Pol e sites genotyped in the single cells) to test population structure without circularity.
 - Which >= 3 Mb events the same-population sister pairs share.
 - Check the 60% S-phase fraction against flow cytometry.
 - Re-run the population sister tests without noisy cells (P_3/P_4 carry more of them).

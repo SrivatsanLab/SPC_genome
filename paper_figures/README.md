@@ -82,7 +82,9 @@ the header of each script.
   `K562_bulk_sbs_sites.R` (de novo SBS from bulk WGS of the
   mutation-accumulation clones) and `K562_sbs_rt_enrichment.R`
   (trinucleotide-matched enrichment in early/mid/late replicating thirds of
-  the callable genome).
+  the callable genome). `K562_sbs_tree_germline.R` flags germline/ancestral,
+  chrM and unplaced-contig sites; `K562_sbs_tree_rebuild.R` rebuilds the
+  single-cell and population SBS trees without them.
 
 Stage them with:
 
