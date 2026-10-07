@@ -84,7 +84,8 @@ the header of each script.
   (trinucleotide-matched enrichment in early/mid/late replicating thirds of
   the callable genome). `K562_sbs_tree_germline.R` flags germline/ancestral,
   chrM and unplaced-contig sites; `K562_sbs_tree_rebuild.R` rebuilds the
-  single-cell and population SBS trees without them.
+  single-cell and population SBS trees without them; `K562_population_tree_plot.R`
+  draws the population trees as PDFs.
 
 Stage them with:
 
