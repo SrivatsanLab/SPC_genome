@@ -241,6 +241,22 @@ Non-persistent ("private") sets flatten or reverse the trend, as do the SBS-tree
 signature of artefacts in well-covered early regions. Single-cell Pol e signature calls match the
 bulk P286R persistent profile.
 
+### Germline variants among the SBS-tree sites
+
+`K562_sbs_tree_germline.R`: each single-cell site checked against bulk (pooled VAF >= 0.15 in the
+mutation-accumulation WGS = germline/ancestral) and ENCODE K562 germline calls (ENCFF538YDL).
+- Tree sites: 210 of 700 (30%) germline/ancestral in bulk - all nuclear, so 39% of the 543 nuclear
+  tree sites; 34% of the 100 most frequent, 29% of the 600 population-enriched. 50 (7%) low VAF in
+  bulk; 440 not in the bulk calls (including all 157 chrM / unplaced-contig sites; the bulk call set
+  covers chr1-22, X, Y only).
+- All 3.1 M single-cell calls: 11.9% germline in bulk. The tree selection more than doubled it.
+- ENCODE flags none of the tree sites (883 of all calls): the single-cell pipeline already removed
+  ENCODE K562 germline, but not line-specific germline/ancestral variants that bulk catches.
+- Germline sites are present in every cell; whether a cell shows them reflects coverage and
+  allelic dropout, so for these sites the Hamming tree measures coverage, not lineage.
+- Caveat: the bulk WGS is of separate K562 sublines (mutation-accumulation clones), so variants
+  specific to the single-cell culture's history are "not in bulk" rather than artefacts.
+
 ## Still open
 
 - Rebuild the SBS tree from callable nuclear Pol e signature sites only and compare again.
