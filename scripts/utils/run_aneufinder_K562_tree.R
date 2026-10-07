@@ -1,9 +1,11 @@
 #!/usr/bin/env Rscript
 
 # Run AneuFinder jointly on K562_tree single-cell BAMs.
-# Inputs aligned to GATK hg38 (chr-prefixed). Uses 1 Mb bins, edivisive
-# segmentation, GC correction via BSgenome.Hsapiens.UCSC.hg38, and the
-# ENCODE hg38 blacklist (downloaded on first run).
+# Inputs aligned to GATK hg38 (chr-prefixed). Uses 1 Mb bins (ANEUFINDER_BINSIZE
+# to change), edivisive segmentation, GC correction via
+# BSgenome.Hsapiens.UCSC.hg38, and the ENCODE hg38 blacklist (downloaded on
+# first run). ANEUFINDER_SKIP_SLOW_PLOTS=1 skips the per-cell profile and
+# karyogram PDFs, which take most of the run time.
 
 suppressPackageStartupMessages({
     library(AneuFinder)
@@ -16,6 +18,7 @@ inputfolder  <- Sys.getenv("ANEUFINDER_INPUT", file.path(repo_root, "data/K562_t
 outputfolder <- Sys.getenv("ANEUFINDER_OUTPUT", file.path(repo_root, "results/K562_tree/aneufinder"))
 dir.create(outputfolder, showWarnings = FALSE, recursive = TRUE)
 
+binsize <- as.numeric(Sys.getenv("ANEUFINDER_BINSIZE", "1e6"))
 ncpu <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = "4"))
 cat(sprintf("Using %d CPUs\n", ncpu))
 
@@ -42,6 +45,17 @@ if (!file.exists(blacklist_path)) {
 
 chromosomes <- c(paste0("chr", 1:22), "chrX", "chrY")
 
+# Aneufinder() skips any plot whose PDF already exists, so empty placeholders
+# stand in for the slow ones
+if (Sys.getenv("ANEUFINDER_SKIP_SLOW_PLOTS") == "1") {
+    plotdir <- file.path(outputfolder, "PLOTS", "method-edivisive")
+    dir.create(plotdir, showWarnings = FALSE, recursive = TRUE)
+    bs <- format(binsize, scientific = TRUE, trim = TRUE)
+    for (kind in c("profiles", "karyograms")) {
+        file.create(file.path(plotdir, sprintf("%s_binsize_%s_stepsize_%s.pdf", kind, bs, bs)))
+    }
+}
+
 cat(sprintf("Starting AneuFinder on %d BAMs\n",
             length(list.files(inputfolder, pattern = "\\.bam$"))))
 t0 <- Sys.time()
@@ -51,7 +65,7 @@ Aneufinder(
     outputfolder      = outputfolder,
     assembly          = "hg38",
     numCPU            = ncpu,
-    binsizes          = 1e6,
+    binsizes          = binsize,
     chromosomes       = chromosomes,
     blacklist         = blacklist_path,
     correction.method = "GC",

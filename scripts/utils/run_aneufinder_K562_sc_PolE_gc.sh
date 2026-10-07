@@ -10,6 +10,11 @@
 # blacklist; the original run (sc_PolE_novaseq/AneuFinder_output) had neither.
 # Input is a folder of symlinks to those cells' BAMs; see
 # paper_figures/scripts/K562_cnv_event_tree.R for the tree built from the output.
+#
+# Optional argument: bin size in bp (default 1e6). Other bin sizes write to
+# aneufinder_gc_<binsize>/output and skip the per-cell profile and karyogram
+# plots, e.g.
+#   sbatch scripts/utils/run_aneufinder_K562_sc_PolE_gc.sh 5e5
 
 set -euo pipefail
 
@@ -21,7 +26,15 @@ export R_LIBS_USER=/home/sanjay/R/aneufinder-bioc3.19
 
 cd /home/sanjay/SPC_genome
 
+BINSIZE=${1:-1e6}
+run_dir=/home/sanjay/SPC_genome/results/K562_tree/aneufinder_gc
+if [[ "$BINSIZE" != "1e6" ]]; then
+    run_dir=${run_dir}_${BINSIZE}
+    export ANEUFINDER_SKIP_SLOW_PLOTS=1
+fi
+
+export ANEUFINDER_BINSIZE=$BINSIZE
 export ANEUFINDER_INPUT=/home/sanjay/SPC_genome/results/K562_tree/aneufinder_gc/input
-export ANEUFINDER_OUTPUT=/home/sanjay/SPC_genome/results/K562_tree/aneufinder_gc/output
+export ANEUFINDER_OUTPUT=${run_dir}/output
 
 Rscript scripts/utils/run_aneufinder_K562_tree.R
